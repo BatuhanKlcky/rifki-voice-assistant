@@ -1,4 +1,4 @@
-# JARVIS — Kişisel Masaüstü Yapay Zekâ Asistanı (Faz 1 / MVP)
+# R.I.F.K.I — Kişisel Masaüstü Yapay Zekâ Asistanı (Faz 1 / MVP)
 
 Türkçe konuşan, sesli komutları anlayan, Google Gemini tabanlı bir
 karar mekanizmasıyla bilgisayarında güvenli işlemler yapabilen, PyQt5
@@ -13,7 +13,7 @@ işaretlenenler) bilinçli olarak iskelet/TODO bırakıldı — sahte biçimde
 
 - ✅ Futuristik PyQt5 arayüzü (animasyonlu çekirdek, durum göstergesi, sohbet paneli, CPU/RAM, saat)
 - ✅ Türkçe mikrofon girişi + Google Speech Recognition ile metne çevirme
-- ✅ "Jarvis" wake word döngüsü (bkz. sınırlamalar aşağıda)
+- ✅ "Rıfkı" wake word döngüsü (bkz. sınırlamalar aşağıda)
 - ✅ Gemini API ile tool-calling (function calling) tabanlı karar sistemi (core/ai.py)
 - ✅ gTTS / pyttsx3 ile Türkçe sesli yanıt
 - ✅ Temel sohbet + bağlam hafızası (kısa süreli)
@@ -77,7 +77,7 @@ uygundurlar.
 ## Klasör Yapısı
 
 ```
-JARVIS/
+RIFKI/
 ├── main.py                  # Giriş noktası
 ├── config/settings.py       # .env okuma, merkezi ayarlar
 ├── core/
@@ -97,7 +97,7 @@ JARVIS/
 │   ├── main_window.py         # PyQt5 ana pencere
 │   └── animations.py            # Animasyonlu çekirdek widget'ı
 ├── database/memory.db        # Çalışma zamanında otomatik oluşur
-└── logs/jarvis.log           # Çalışma zamanında otomatik oluşur
+└── logs/rıfkı.log           # Çalışma zamanında otomatik oluşur
 ```
 
 ## Yeni Yetenek Eklemek
