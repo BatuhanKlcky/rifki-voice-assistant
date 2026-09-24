@@ -1,107 +1,143 @@
 """
-tools/filesystem.py
---------------------
-Güvenli dosya/klasör işlemleri. Silme gibi geri dönüşü zor işlemler
-core/security.py üzerinden onay gerektirir (router bunu kontrol eder).
+tools/system.py
+----------------
+İşletim sistemi kontrol araçları (kapanma, yeniden başlatma, sistem durumu, ses, tarih ve ekran görüntüsü).
 """
 
 import os
-import shutil
+import platform
+import subprocess
+import datetime
 from pathlib import Path
 from core.logger import get_logger
 
-log = get_logger("tools.filesystem")
+log = get_logger("tools.system")
 
 
-def search_files(folder: str, keyword: str) -> str:
-    folder_path = Path(folder).expanduser()
-    if not folder_path.exists():
-        return f"'{folder}' klasörü bulunamadı."
+def get_system_status() -> str:
+    """Sistem kaynaklarının anlık durumunu özetler."""
+    import psutil
+    cpu = psutil.cpu_percent(interval=0.5)
+    ram = psutil.virtual_memory().percent
+    disk = psutil.disk_usage("C:\\" if os.name == "nt" else "/").percent
+    return f"Sistem Durumu -> CPU: %{cpu}, RAM: %{ram}, Disk: %{disk}"
 
-    matches = []
+
+def get_datetime() -> str:
+    """Anlık tarih ve saat bilgisini döndürür."""
+    now = datetime.datetime.now()
+    return now.strftime("%d Eylül %Y, %H:%M:%S")
+
+
+def take_screenshot() -> str:
+    """Ekran görüntüsü alır ve masaüstüne kaydeder."""
     try:
-        for root, _, files in os.walk(folder_path):
-            for f in files:
-                if keyword.lower() in f.lower():
-                    matches.append(str(Path(root) / f))
-            if len(matches) >= 20:
-                break
+        import pyautogui
+        desktop = Path(os.path.expanduser("~")) / "Desktop"
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filepath = desktop / f"rifki_screenshot_{timestamp}.png"
+        
+        screenshot = pyautogui.screenshot()
+        screenshot.save(filepath)
+        log.info(f"Ekran görüntüsü kaydedildi: {filepath}")
+        return f"Ekran görüntüsü başarıyla masaüstüne kaydedildi."
     except Exception as e:
-        log.error(f"Dosya arama hatası: {e}")
-        return "Dosya aranırken bir sorun oluştu."
-
-    if not matches:
-        return f"'{keyword}' ile eşleşen dosya bulunamadı."
-    listing = "\n".join(matches[:20])
-    return f"{len(matches)} dosya bulundu:\n{listing}"
+        log.error(f"Ekran görüntüsü alma hatası: {e}")
+        return "Ekran görüntüsü alınamadı (pyautogui kütüphanesi gerekebilir)."
 
 
-def create_file(path: str, content: str = "") -> str:
+def set_volume(level: int) -> str:
+    """Sistem ses seviyesini belirtilen yüzdeye (0-100) ayarlar."""
     try:
-        p = Path(path).expanduser()
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(content, encoding="utf-8")
-        log.info(f"Dosya oluşturuldu: {p}")
-        return f"{p} oluşturuldu."
+        from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+        from comtypes import CLSCTX_ALL
+        devices = AudioUtilities.GetSpeakers()
+        interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+        volume = interface.QueryInterface(IAudioEndpointVolume)
+        scalar = max(0.0, min(100.0, float(level))) / 100.0
+        volume.SetMasterVolumeLevelScalar(scalar, None)
+        return f"Ses seviyesi %{level} olarak ayarlandı."
     except Exception as e:
-        log.error(f"Dosya oluşturma hatası: {e}")
-        return "Dosya oluşturulurken bir sorun oluştu."
+        log.error(f"Ses ayarlama hatası: {e}")
+        return "Ses seviyesi değiştirilemedi."
 
 
-def copy_file(source: str, destination: str) -> str:
+def mute_volume() -> str:
+    """Sistem sesini tamamen kapatır (Mute)."""
     try:
-        shutil.copy2(Path(source).expanduser(), Path(destination).expanduser())
-        return f"{source} -> {destination} kopyalandı."
+        from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+        from comtypes import CLSCTX_ALL
+        devices = AudioUtilities.GetSpeakers()
+        interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+        volume = interface.QueryInterface(IAudioEndpointVolume)
+        volume.SetMute(1, None)
+        return "Sistem sesi kapatıldı."
     except Exception as e:
-        log.error(f"Kopyalama hatası: {e}")
-        return "Dosya kopyalanırken bir sorun oluştu."
+        log.error(f"Sesi kapatma hatası: {e}")
+        return "Ses kapatılamadı."
 
 
-def move_file(source: str, destination: str) -> str:
+def unmute_volume() -> str:
+    """Sistem sesini açar (Unmute)."""
     try:
-        shutil.move(Path(source).expanduser(), Path(destination).expanduser())
-        return f"{source} -> {destination} taşındı."
+        from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+        from comtypes import CLSCTX_ALL
+        devices = AudioUtilities.GetSpeakers()
+        interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+        volume = interface.QueryInterface(IAudioEndpointVolume)
+        volume.SetMute(0, None)
+        return "Sistem sesi açıldı."
     except Exception as e:
-        log.error(f"Taşıma hatası: {e}")
-        return "Dosya taşınırken bir sorun oluştu."
+        log.error(f"Sesi açma hatası: {e}")
+        return "Ses açılamadı."
 
 
-def rename_file(source: str, new_name: str) -> str:
+def shutdown_pc() -> str:
+    """Bilgisayarı kapatır."""
     try:
-        src = Path(source).expanduser()
-        dst = src.parent / new_name
-        src.rename(dst)
-        return f"{source} -> {new_name} olarak yeniden adlandırıldı."
-    except Exception as e:
-        log.error(f"Yeniden adlandırma hatası: {e}")
-        return "Dosya yeniden adlandırılırken bir sorun oluştu."
-
-
-def delete_file(path: str) -> str:
-    """Bu fonksiyon router tarafından SADECE kullanıcı onayından sonra çağrılmalı."""
-    try:
-        p = Path(path).expanduser()
-        if p.is_dir():
-            shutil.rmtree(p)
+        if platform.system() == "Windows":
+            os.system("shutdown /s /t 5")
         else:
-            p.unlink()
-        log.info(f"Silindi: {p}")
-        return f"{p} silindi."
+            os.system("shutdown -h now")
+        log.warning("Bilgisayar kapatma komutu tetiklendi.")
+        return "Bilgisayar 5 saniye içinde kapatılıyor."
     except Exception as e:
-        log.error(f"Silme hatası: {e}")
-        return "Dosya silinirken bir sorun oluştu."
+        log.error(f"Kapatma hatası: {e}")
+        return "Bilgisayar kapatılamadı."
 
 
-def open_path(path: str) -> str:
-    """Bir dosya/klasörü varsayılan uygulamayla açar."""
-    p = Path(path).expanduser()
-    if not p.exists():
-        return f"'{path}' bulunamadı."
+def shutdown_computer() -> str:
+    """Bilgisayarı kapatır (Router uyumluluk fonksiyonu)."""
+    return shutdown_pc()
+
+
+def restart_pc() -> str:
+    """Bilgisayarı yeniden başlatır."""
     try:
-        os.startfile(str(p))  # Windows-only
-        return f"{path} açılıyor."
-    except AttributeError:
-        return "Dosya/klasör açma şu an sadece Windows'ta destekleniyor."
+        if platform.system() == "Windows":
+            os.system("shutdown /r /t 5")
+        else:
+            os.system("reboot")
+        log.warning("Bilgisayar yeniden başlatma komutu tetiklendi.")
+        return "Bilgisayar 5 saniye içinde yeniden başlatılıyor."
     except Exception as e:
-        log.error(f"Açma hatası: {e}")
-        return "Açarken bir sorun oluştu."
+        log.error(f"Yeniden başlatma hatası: {e}")
+        return "Bilgisayar yeniden başlatılamadı."
+
+
+def restart_computer() -> str:
+    """Bilgisayarı yeniden başlatır (Router uyumluluk fonksiyonu)."""
+    return restart_pc()
+
+
+def lock_screen() -> str:
+    """Ekranı kilitler."""
+    try:
+        if platform.system() == "Windows":
+            subprocess.run(["rundll32.exe", "user32.dll,LockWorkStation"])
+        else:
+            subprocess.run(["xdg-screensaver", "lock"])
+        return "Ekran kilitlendi."
+    except Exception as e:
+        log.error(f"Ekran kilitleme hatası: {e}")
+        return "Ekran kilitlenirken bir hata oluştu."
