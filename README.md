@@ -48,3 +48,4 @@ RIFKI/
 ├── config/                # Çevresel değişkenler (.env) ve merkezi ayarlar
 ├── database/              # SQLite hafıza veritabanı (Çalışma zamanında oluşur)
 └── main.py                # Sistem başlatıcı ve donanım doğrulama
+└── .env                   # Anahtarlar
