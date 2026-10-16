@@ -64,4 +64,4 @@ En az 2 telefon ekran görüntüsü zorunlu.
 
 ## Gizlilik URL’si
 
-`docs/privacy-tr.md` dosyasını herkese açık bir URL’de yayınlayıp Play’e yapıştırın.
+https://batuhanklcky.github.io/rifki-voice-assistant/privacy.html
