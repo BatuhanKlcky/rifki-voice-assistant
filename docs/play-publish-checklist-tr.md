@@ -8,8 +8,8 @@ AAB: [`mobile-android/RIFKI-mobile-release.aab`](../mobile-android/RIFKI-mobile-
 1. [Google Play Console](https://play.google.com/console) hesabı / geliştirici kaydı.
 2. **Uygulama oluştur** → ad: RIFKI → dil: Türkçe → ücretsiz.
 3. **Gizlilik politikası URL’si** (zorunlu):
-   - [`privacy-tr.md`](privacy-tr.md) dosyasını GitHub Pages / kendi sitenizde yayınlayın.
-   - İletişim satırını gerçek e-posta ile doldurun.
+   - https://batuhanklcky.github.io/rifki-voice-assistant/privacy.html
+   - İsterseniz iletişim satırına kendi e-postanızı ekleyin.
 4. **Mağaza listesi** — metinler: [`play-listing-tr.md`](play-listing-tr.md)
    - Kısa / uzun açıklama
    - En az 2 telefon ekran görüntüsü (onboarding, QR, panel)
