@@ -66,7 +66,9 @@ Menüden **Yeniden eşleştir** / **Bağlantıyı kaldır** kullanılabilir.
 
 ## Kurulum (Windows) — Setup.exe
 
-Son kullanıcı için tek dosya kurulum (TXT yok):
+**İndir:** [RIFKI-Setup-2.1.0.exe](https://github.com/BatuhanKlcky/rifki-voice-assistant/releases/download/v2.1.0/RIFKI-Setup-2.1.0.exe) · [Release notları](https://github.com/BatuhanKlcky/rifki-voice-assistant/releases/tag/v2.1.0)
+
+Geliştirici yeniden derleme:
 
 1. `dist\RIFKI` üret: `venv\Scripts\python.exe -m PyInstaller --noconfirm rifki.spec`
 2. `cd installer` → `.\build-setup.ps1` (Inno Setup 6 gerekir)
