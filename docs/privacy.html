@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RIFKI Mobil — Gizlilik Politikası</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      line-height: 1.55;
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 32px 20px 64px;
+    }
+    h1 { font-size: 1.6rem; margin-bottom: 0.4rem; }
+    h2 { font-size: 1.15rem; margin-top: 1.6rem; }
+    .meta { color: #666; font-size: 0.95rem; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+    th, td { border: 1px solid #8884; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #8881; }
+    a { color: inherit; }
+    ol { padding-left: 1.2rem; }
+  </style>
+</head>
+<body>
+  <h1>RIFKI Mobil — Gizlilik Politikası</h1>
+  <p class="meta">
+    Son güncelleme: 16 Ekim 2026<br />
+    Uygulama: RIFKI (<code>com.rifki.assistant</code>)<br />
+    İletişim:
+    <a href="https://github.com/BatuhanKlcky/rifki-voice-assistant/issues">GitHub Issues</a>
+  </p>
+
+  <h2>Özet</h2>
+  <p>
+    RIFKI mobil uygulaması, sizin bilgisayarınızda çalışan RIFKI masaüstü asistanına bağlanan bir uzaktan paneldir.
+    Komutlar ve durum bilgisi <strong>sizin bilgisayarınıza</strong> gider; RIFKI’nin üçüncü taraf bir bulut hesabına
+    veya merkezi bir sunucuya kullanıcı hesabı açılmaz.
+  </p>
+
+  <h2>Toplanan veriler</h2>
+  <table>
+    <thead>
+      <tr><th>Veri</th><th>Neden</th><th>Nerede tutulur</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Köprü adresi ve eşleştirme jetonu</td>
+        <td>Telefondan PC köprüsüne bağlanmak</td>
+        <td>Yalnızca telefonda (uygulama tercihlerinde)</td>
+      </tr>
+      <tr>
+        <td>Kamera görüntüsü</td>
+        <td>QR kod okumak</td>
+        <td>Cihazda anlık işlenir; kaydedilmez, sunucuya gönderilmez</td>
+      </tr>
+      <tr>
+        <td>Yazdığınız komut metni</td>
+        <td>Bilgisayardaki RIFKI’ye iletmek</td>
+        <td>Bilgisayarınızdaki RIFKI’ye gider; mobil uygulama bunu kendi sunucusuna yüklemez</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Toplanmayanlar</h2>
+  <ul>
+    <li>Üçüncü taraf analitik / reklam SDK’sı yoktur.</li>
+    <li>Konum, kişi listesi, mikrofon veya galeri kullanılmaz (kamera yalnızca QR tarama için istenir).</li>
+    <li>RIFKI ekibine otomatik telemetri gönderilmez.</li>
+  </ul>
+
+  <h2>Bağlantı modeli</h2>
+  <ol>
+    <li>Bilgisayarda RIFKI açılır; «Mobil bağlantı» ile QR üretilir.</li>
+    <li>Telefonda QR taranır; adres ve jeton telefona kaydedilir.</li>
+    <li>Aynı Wi‑Fi’de bağlantı doğrudan bilgisayarınıza (yerel ağ) olabilir.</li>
+    <li>Uzaktan erişimde bilgisayarınızdaki Cloudflare hızlı tüneli kullanılır; trafik yine sizin bilgisayarınızdaki köprüye ulaşır.</li>
+  </ol>
+
+  <h2>Veri saklama ve silme</h2>
+  <ul>
+    <li>Eşleştirmeyi kaldırmak: uygulamada <strong>Bağlantıyı kaldır</strong>.</li>
+    <li>Uygulamayı kaldırmak: telefonda saklanan köprü bilgisi de silinir.</li>
+    <li>Bilgisayardaki RIFKI günlükleri ve bellek, masaüstü uygulamanın kendi ayarlarına tabidir.</li>
+  </ul>
+
+  <h2>Çocuklar</h2>
+  <p>Uygulama genel kitle içindir; 13 yaş altı için özel bir hizmet sunulmaz.</p>
+
+  <h2>Değişiklikler</h2>
+  <p>Bu metin güncellenebilir. Play Store’daki gizlilik URL’sini güncel tutun.</p>
+</body>
+</html>
