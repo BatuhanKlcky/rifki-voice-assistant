@@ -1,0 +1,21 @@
+﻿OmniRoute nedir?
+
+RIFKI'nin beyni OmniRoute adli yerel bir yapay zeka koprusudur.
+Bilgisayarinizda 127.0.0.1:20128 adresinde calisir. RIFKI komutlari
+anlamak ve yanit uretmek icin bu servise baglanir.
+
+Neden gerekli?
+- Sesli / mobil komutlar OmniRoute uzerinden modele gider.
+- OmniRoute kapalysa RIFKI acilir ama cevap veremez.
+
+Nereden indirilir? (Windows)
+https://github.com/diegosouzapw/OmniRoute/releases/tag/v3.8.51
+Dosya: OmniRoute.Setup.3.8.51.exe
+
+Kurulumda ne yapacaksiniz?
+1) OmniRoute'un calisip calismadigi kontrol edilir.
+2) Yoksa "OmniRoute indir" ile v3.8.51 Setup indirilir; kurup acin.
+3) API anahtarinizi forma yapistirirsiniz - .env otomatik yazilir.
+   Elle TXT duzenlemeniz gerekmez.
+
+Varsayilan model: antigravity/gemini-2.5-flash

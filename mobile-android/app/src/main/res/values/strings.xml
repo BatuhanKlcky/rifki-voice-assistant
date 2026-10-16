@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">RIFKI</string>
+    <string name="onboard_title">Bilgisayarındaki RIFKI’ye bağlan</string>
+    <string name="onboard_body">1. Bilgisayarda RIFKI’yi aç\n2. Sağ alttaki tepsi simgesinden «Mobil bağlantı»yı seç\n3. Burada QR kodu tara\n\nSes bilgisayardan çıkar; telefonda durum görür ve komut yazarsın.</string>
+    <string name="scan_qr">QR tara</string>
+    <string name="scan_title">QR tara</string>
+    <string name="scan_hint">Bilgisayardaki RIFKI penceresindeki kare kodu çerçeveye getir.</string>
+    <string name="scan_invalid">Bu RIFKI eşleştirme kodu değil</string>
+    <string name="scan_ok">Bağlandı</string>
+    <string name="camera_required">QR okumak için kamera izni gerekli</string>
+    <string name="reload">Yenile</string>
+    <string name="repair">Yeniden eşleştir</string>
+    <string name="unpair">Bağlantıyı kaldır</string>
+    <string name="unpair_title">Bağlantıyı kaldır?</string>
+    <string name="unpair_msg">Telefondaki eşleştirme silinir. Tekrar bağlanmak için QR taraman gerekir.</string>
+</resources>

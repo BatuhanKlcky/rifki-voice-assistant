@@ -1,0 +1,74 @@
+# Secrets & local env
+.env
+.env.local
+*.pem
+*.jks
+*.keystore
+mobile-android/keystore/*.jks
+mobile-android/keystore/*.keystore
+mobile-android/keystore/keystore.properties
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Logs & runtime data
+logs/
+*.log
+database/*.db
+database/*.db-*
+
+# Build / dist (Setup & exe Releases'e gider)
+build/
+dist/
+*.spec.bak
+
+# Android local
+mobile-android/.gradle/
+mobile-android/.jdk/
+mobile-android/local.properties
+mobile-android/.idea/
+mobile-android/app/build/
+mobile-android/build/
+mobile-android/*.iml
+
+# Heavy SDK / tools caches (keep small helpers)
+tools/android-sdk/
+tools/jdk-17/
+mobile-android/.jdk/
+
+# OmniRoute payload binaries (optional local)
+installer/payload/omniroute/**
+!installer/payload/omniroute/README.md
+!installer/payload/omniroute/.gitkeep
+installer/tools/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Accidental junk
+{config,core,voice,tools,ui
+
+# extras
+*.aab
+mobile-android/RIFKI-mobile-*.apk
+mobile-android/RIFKI-mobile-*.aab
+tools/cloudflared.exe
+
+# Local Gradle distribution
+tools/gradle-8.7/
+
+
+# Heavy local downloads / models (Releases veya lokal)
+tools/*.zip
+tools/cmdtools.zip
+voice/piper_models/*.onnx
+voice/piper_models/*.wav

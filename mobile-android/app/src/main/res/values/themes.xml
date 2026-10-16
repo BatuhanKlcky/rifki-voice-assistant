@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.RIFKI" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#3DF0FF</item>
+        <item name="colorPrimaryVariant">#0A1218</item>
+        <item name="colorOnPrimary">#041018</item>
+        <item name="android:statusBarColor">#0A1218</item>
+        <item name="android:navigationBarColor">#0A1218</item>
+        <item name="android:windowBackground">#0A1218</item>
+    </style>
+
+    <style name="Theme.RIFKI.Splash" parent="Theme.RIFKI">
+        <item name="android:windowBackground">@drawable/splash_background</item>
+    </style>
+
+
+    <style name="Theme.RIFKI.Scan" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+        <item name="colorPrimary">#0A1218</item>
+        <item name="colorPrimaryVariant">#0A1218</item>
+        <item name="colorOnPrimary">#E7F7FF</item>
+        <item name="android:statusBarColor">#000000</item>
+        <item name="android:navigationBarColor">#000000</item>
+        <item name="android:windowBackground">#000000</item>
+    </style>
+</resources>

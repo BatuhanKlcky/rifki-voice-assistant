@@ -1,0 +1,13 @@
+/.gradle/
+/.jdk/
+/build/
+/app/build/
+/local.properties
+*.iml
+.idea/
+.DS_Store
+/keystore/*.jks
+/keystore/*.keystore
+/keystore/keystore.properties
+!/keystore/create-keystore.ps1
+!/keystore/README.md

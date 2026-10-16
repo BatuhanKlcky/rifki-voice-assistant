@@ -1,0 +1,5 @@
+payload/omniroute/**
+!payload/omniroute/README.md
+!payload/omniroute/.gitkeep
+tools/
+*.log

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/action_reload"
+        android:title="@string/reload"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_repair"
+        android:title="@string/repair"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_unpair"
+        android:title="@string/unpair"
+        app:showAsAction="never" />
+</menu>

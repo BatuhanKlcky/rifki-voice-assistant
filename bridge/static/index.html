@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a1218" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>RIFKI Mobil</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="top">
+    <div>
+      <p class="kicker">RIFKI</p>
+      <h1>Mobil köprü</h1>
+    </div>
+    <div id="badge" class="badge off">OFF</div>
+  </header>
+
+  <section id="auth" class="card hidden">
+    <label for="token">Erişim tokeni</label>
+    <input id="token" type="password" autocomplete="off" placeholder="MOBILE_BRIDGE_TOKEN" />
+    <button id="saveToken" type="button">Kaydet ve bağlan</button>
+    <p class="hint">Token .env içindeki MOBILE_BRIDGE_TOKEN ile aynı olmalı.</p>
+  </section>
+
+  <section class="card">
+    <p class="meta" id="meta">Bağlanıyor…</p>
+    <div id="log" class="log" aria-live="polite"></div>
+  </section>
+
+  <form id="cmdForm" class="composer">
+    <input id="cmd" type="text" enterkeyhint="send" autocomplete="off" placeholder="Komut yaz…" />
+    <button type="submit" id="send">Gönder</button>
+  </form>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
