@@ -2,8 +2,8 @@
 
 **Son güncelleme:** 16 Ekim 2026  
 **Uygulama:** RIFKI (`com.rifki.assistant`)  
-**İletişim:** Play Console’a koyacağınız e-posta / destek adresini buraya yazın
-(ör. `destek@ornek.com`) — yayınlamadan önce güncelleyin.
+**İletişim:** [GitHub Issues](https://github.com/BatuhanKlcky/rifki-voice-assistant/issues)  
+(İsterseniz buraya kendi destek e-postanızı yazın.)
 
 ## Özet
 
