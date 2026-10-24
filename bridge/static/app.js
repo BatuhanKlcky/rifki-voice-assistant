@@ -584,7 +584,22 @@
   document.querySelectorAll(".chip").forEach((chip) => {
     chip.addEventListener("click", () => {
       const text = chip.dataset.cmd;
+      if (!text) return;
       if (cmd) cmd.value = text;
+
+      if (text.includes("ekran görüntüsü") || text.includes("ekran al")) {
+        if (btnShotDirect) {
+          btnShotDirect.click();
+          return;
+        }
+      }
+      if (text.includes("sesi yüzde elli")) {
+        callRemote("set_volume", { level: 50 });
+      }
+      if (text.includes("kilitle")) {
+        callRemote("lock");
+        return;
+      }
       submitCommand(text);
     });
   });
@@ -793,7 +808,11 @@
   // Submit Command
   async function submitCommand(text) {
     text = (text || "").trim();
-    if (!text || !token) return;
+    if (!text) return;
+    if (!token) {
+      showAuth();
+      return;
+    }
     appendMsg("user", text);
     if (cmd) cmd.value = "";
     setBadge("THINKING");
@@ -802,7 +821,7 @@
       const res = await fetch(`/api/command?token=${encodeURIComponent(token)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command: text }),
+        body: JSON.stringify({ text: text, command: text }),
       });
       if (res.status === 401) { showAuth(); return; }
       const data = await res.json();

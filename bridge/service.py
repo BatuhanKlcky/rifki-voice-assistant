@@ -254,7 +254,7 @@ class MobileBridge:
             body = await request.json()
         except Exception:
             return web.json_response({"error": "geçersiz json"}, status=400)
-        text = (body.get("text") or "").strip()
+        text = (body.get("text") or body.get("command") or "").strip()
         if not text:
             return web.json_response({"error": "boş komut"}, status=400)
         handler = self._command_handler
