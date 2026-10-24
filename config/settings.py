@@ -37,6 +37,8 @@ class Settings:
     STT_LANGUAGE: str = os.getenv("STT_LANGUAGE", "tr-TR")
     # Rıfkı için tr-TR; wake_word.py en-US alternatiflerini de dener.
     WAKE_WORD_LANGUAGE: str = os.getenv("WAKE_WORD_LANGUAGE", "tr-TR")
+    _mic_index_env = os.getenv("MICROPHONE_INDEX", "").strip()
+    MICROPHONE_INDEX: int | None = int(_mic_index_env) if _mic_index_env.isdigit() else None
     # TTS_ENGINE: "edge" (varsayılan, ücretsiz nöral ses, önerilen),
     # "piper" (tamamen yerel/offline, farklı sesler), "gtts" (Google, orta
     # kalite) veya "pyttsx3" (offline, robotik).

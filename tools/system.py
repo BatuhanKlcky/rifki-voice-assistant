@@ -14,7 +14,7 @@ from core.logger import get_logger
 log = get_logger("tools.system")
 
 
-def get_system_status() -> str:
+def get_system_status(*args, **kwargs) -> str:
     """Sistem kaynaklarının anlık durumunu özetler."""
     import psutil
     # Blocking interval=0.5 kaldırıldı; non-blocking ölçüm + tek ısıtma
@@ -25,7 +25,7 @@ def get_system_status() -> str:
     return f"Sistem Durumu -> CPU: %{cpu}, RAM: %{ram}, Disk: %{disk}"
 
 
-def get_datetime() -> str:
+def get_datetime(*args, **kwargs) -> str:
     """Anlık tarih ve saat bilgisini döndürür."""
     now = datetime.datetime.now()
     return now.strftime("%d Eylül %Y, %H:%M:%S")
@@ -93,7 +93,7 @@ def capture_screenshot_for_mobile(max_width: int = 1280, quality: int = 72) -> b
     return data
 
 
-def take_screenshot() -> str:
+def take_screenshot(*args, **kwargs) -> str:
     """Ekran görüntüsü alır ve masaüstüne kaydeder."""
     try:
         desktop = Path(os.path.expanduser("~")) / "Desktop"

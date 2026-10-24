@@ -18,6 +18,7 @@ import speech_recognition as sr
 
 from config.settings import settings
 from core.logger import get_logger
+from voice.audio_device import get_best_microphone_index
 
 log = get_logger("voice.stt")
 
@@ -35,7 +36,8 @@ def listen_and_transcribe(timeout: int = 5, phrase_time_limit: int = 20) -> str:
     Başarısız olursa boş string döner (çağıran taraf bunu "anlaşılamadı" sayar).
     """
     try:
-        with sr.Microphone() as source:
+        mic_idx = get_best_microphone_index()
+        with sr.Microphone(device_index=mic_idx) as source:
             global _calibrated
             if not _calibrated:
                 _recognizer.adjust_for_ambient_noise(source, duration=0.3)

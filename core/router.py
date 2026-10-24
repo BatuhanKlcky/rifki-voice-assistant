@@ -14,6 +14,7 @@ execute_tool(name, input, ask_fn) fonksiyonu:
 - Her durumda hatanın çıplak traceback olarak kullanıcıya gitmesini engeller.
 """
 
+import inspect
 from typing import Callable, Optional
 
 from core.logger import get_logger
@@ -287,7 +288,11 @@ def execute_tool(
             return "İşlemi onaylamadığın için gerçekleştirmedim."
 
     try:
-        result = fn(**tool_input)
+                # Modelin g?nderdi?i ?ema d??? ekstra arg?manlar? g?venle filtrele
+        sig = inspect.signature(fn)
+        has_kwargs = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+        safe_kwargs = tool_input if has_kwargs else {k: v for k, v in tool_input.items() if k in sig.parameters}
+        result = fn(**safe_kwargs)
         log.info(f"Tool çalıştı: {name}({tool_input}) -> {result}")
         return result
     except TypeError as e:

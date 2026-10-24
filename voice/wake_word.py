@@ -16,6 +16,7 @@ import speech_recognition as sr
 
 from config.settings import settings
 from core.logger import get_logger
+from voice.audio_device import get_best_microphone_index
 
 log = get_logger("voice.wake_word")
 
@@ -166,7 +167,8 @@ def _audio_rms(audio) -> int:
 
 def wait_for_wake_word(stop_flag_check=lambda: False) -> bool:
     try:
-        with sr.Microphone() as source:
+        mic_idx = get_best_microphone_index()
+        with sr.Microphone(device_index=mic_idx) as source:
             norm = _normalize_wake_setting(settings.WAKE_WORD)
             log.info(
                 f"Wake-word dinleme (kelime={settings.WAKE_WORD!r}→{norm!r}, "
