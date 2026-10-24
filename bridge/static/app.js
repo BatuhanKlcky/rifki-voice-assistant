@@ -4,6 +4,13 @@
 (() => {
   // DOM Elements
   const badge = document.getElementById("badge");
+  if (badge) {
+    badge.style.cursor = "pointer";
+    badge.addEventListener("click", () => {
+      fetchStatus();
+      connectWebSocket();
+    });
+  }
   const meta = document.getElementById("meta");
   const logEl = document.getElementById("log");
   const auth = document.getElementById("auth");
@@ -394,7 +401,7 @@
       } catch (_) {}
     }
     setBadge("SPEAKING");
-    const audioUrl = /api/tts?token=&text=&t=;
+    const audioUrl = `/api/tts?token=${encodeURIComponent(token)}&text=${encodeURIComponent(clean)}&t=${Date.now()}`;
     const audio = new Audio(audioUrl);
     activeAudio = audio;
     audio.onended = () => {
@@ -444,6 +451,7 @@
   function appendMsg(role, text) {
     if (!text || !logEl) return;
     if (isDuplicateMessage(role, text)) return;
+    const div = document.createElement("div");
     div.className = "msg " + role;
 
     const head = document.createElement("div");
@@ -477,6 +485,19 @@
   // =========================================================================
   // 3. TELEMETRY & HARDWARE SYNC
   // =========================================================================
+async function fetchStatus() {
+    if (!token) return;
+    try {
+      const res = await fetch(`/api/status?token=${encodeURIComponent(token)}`);
+      if (res.status === 401) { showAuth(); return; }
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && data.state) {
+        setBadge(data.state);
+      }
+    } catch (_) {}
+  }
+
   async function fetchTelemetry() {
     if (!token) return;
     try {
@@ -944,6 +965,7 @@
 
     ws.onopen = () => {
       if (meta) meta.textContent = "Bağlandı (Canlı WS)";
+      fetchStatus();
       fetchTelemetry();
       fetchVolume();
     };
@@ -1011,11 +1033,15 @@
       showAuth();
       return;
     }
+    fetchStatus();
     connectWebSocket();
     fetchTelemetry();
     fetchVolume();
     clearInterval(telemTimer);
-    telemTimer = setInterval(fetchTelemetry, 3500);
+    telemTimer = setInterval(() => {
+      fetchTelemetry();
+      fetchStatus();
+    }, 3500);
   }
 
   // Start ASCII Engine & Initialize
