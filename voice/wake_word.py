@@ -1,23 +1,17 @@
 """
 voice/wake_word.py
 -------------------
-"Rıfkı" uyandırma kelimesini algılar.
+«Rıfkı» uyandırma kelimesi.
 
-DÜRÜST NOT (mimari tercih): Gerçek, düşük gecikmeli, sürekli-dinleyen bir
-wake-word motoru (ör. Picovoice Porcupine) offline çalışır ve çok az CPU
-harcar. Bu MVP'de böyle özel bir motor YOK; bunun yerine mevcut STT
-(Google recognizer) ile kısa ses parçaları sürekli dinlenip metne çevrilir
-ve içinde WAKE_WORD var mı diye bakılır.
-
-Bunun dezavantajı: internet bağlantısı gerektirir ve gerçek wake-word
-motorlarına göre biraz daha yüksek gecikme/CPU kullanımı olur. Avantajı:
-ek bir API anahtarı/ücretli servis gerektirmeden hemen çalışır.
-
-İleride performans kritikse: bu dosyayı Porcupine ile değiştirmen,
-sistemin geri kalanını (main.py, core/ai.py) HİÇ etkilemez — sadece
-`wait_for_wake_word()` fonksiyonunun içini değiştirmen yeterli.
+Notlar:
+- .env'de Türkçe karakter bozulabiliyor (rÄ±fkÄ±); her zaman rifki ailesine normalize et.
+- Google sık sık yalnızca «rıf» / «Rıfkı» döndürür — kısa önekleri de kabul et.
+- dynamic_energy_threshold KAPALI (kısa kelimeyi yutuyordu).
 """
 
+from __future__ import annotations
+
+import audioop
 import speech_recognition as sr
 
 from config.settings import settings
@@ -26,9 +20,11 @@ from core.logger import get_logger
 log = get_logger("voice.wake_word")
 
 _recognizer = sr.Recognizer()
-_recognizer.energy_threshold = 200
-_recognizer.dynamic_energy_threshold = True
-_recognizer.pause_threshold = 0.6
+_recognizer.energy_threshold = 100
+_recognizer.dynamic_energy_threshold = False
+_recognizer.pause_threshold = 0.55
+_recognizer.non_speaking_duration = 0.35
+_recognizer.phrase_threshold = 0.15
 
 _FOLD = str.maketrans({
     "ı": "i", "İ": "i", "I": "i",
@@ -37,59 +33,183 @@ _FOLD = str.maketrans({
     "ü": "u", "Ü": "u",
     "ö": "o", "Ö": "o",
     "ç": "c", "Ç": "c",
+    # Mojibake kalıntıları
+    "±": "i", "Ä": "", "Å": "",
+})
+
+# Tam / yakın yazımlar
+_RIFKI_ALIASES = frozenset({
+    "rifki", "refki", "rivki", "rifky", "rifkey", "riffki", "riffkey",
+    "rifke", "rifku", "ricki", "ricky", "rikki", "rikky",
+    "reefki", "reefkey", "risky", "riski", "ripki", "arifki",
+    "heyrifki", "yarifki",
+})
+
+# Google'ın kestiği kısa parçalar (tek başına kabul)
+_RIFKI_PREFIXES = frozenset({
+    "rif", "rifk", "ref", "refk", "riv", "rivk", "riff",
 })
 
 
 def _fold(text: str) -> str:
-    return text.lower().translate(_FOLD)
+    return (text or "").lower().translate(_FOLD)
+
+
+def _compact(text: str) -> str:
+    return "".join(ch for ch in _fold(text) if ch.isalnum())
+
+
+def _normalize_wake_setting(raw: str) -> str:
+    """Bozuk encoding / jarvis → her zaman rifki ailesi."""
+    t = _compact(raw)
+    if not t or t in ("jarvis", "alexa"):
+        return "rifki"
+    if "rifk" in t or "refk" in t or (t.startswith("r") and "fk" in t):
+        return "rifki"
+    # rÄ±fkÄ± gibi: harfler arasından r..f..k çıkar
+    letters = "".join(ch for ch in t if ch.isalpha())
+    if "rifk" in letters or letters.startswith("rif"):
+        return "rifki"
+    return t or "rifki"
 
 
 def matches_wake_word(text: str) -> bool:
-    """Google 'Rıfkı'yı sık sık 'rifki' veya 'refki' diye yazar."""
     heard = _fold(text)
-    target = _fold(settings.WAKE_WORD)
-    if target and target in heard:
+    compact = _compact(text)
+    if not compact:
+        return False
+
+    # Ürün adı her zaman rifki — .env bozuk olsa bile
+    if "rifki" in compact or "refki" in compact:
         return True
-    if target == "rifki" and "refki" in heard:
+    if any(a in compact for a in _RIFKI_ALIASES):
+        return True
+    if any(a in heard for a in _RIFKI_ALIASES):
+        return True
+
+    # Tek token: Rıfkı / rıf / rifk...
+    for token in heard.replace(",", " ").replace(".", " ").split():
+        t = _compact(token)
+        if not t:
+            continue
+        if t in _RIFKI_ALIASES or t in _RIFKI_PREFIXES:
+            return True
+        if len(t) >= 3 and (
+            t.startswith("rif")
+            or t.startswith("ref")
+            or t.startswith("riv")
+            or t.startswith("riff")
+        ):
+            return True
+
+    # Tüm cümle kompakt önek
+    if compact in _RIFKI_PREFIXES:
+        return True
+    if len(compact) >= 3 and compact.startswith(("rif", "ref", "riv")):
+        return True
+
+    target = _normalize_wake_setting(settings.WAKE_WORD)
+    if target and target in compact:
         return True
     return False
 
 
+def _transcripts_from_google(audio, language: str) -> list[str]:
+    out: list[str] = []
+    try:
+        result = _recognizer.recognize_google(
+            audio, language=language, show_all=True
+        )
+    except sr.UnknownValueError:
+        return out
+    except sr.RequestError as e:
+        log.error(f"Wake-word STT hatası [{language}]: {e}")
+        raise
+
+    if not result:
+        return out
+    if isinstance(result, str):
+        return [result]
+    if isinstance(result, dict):
+        for alt in result.get("alternative") or []:
+            t = (alt.get("transcript") or "").strip()
+            if t and t not in out:
+                out.append(t)
+    return out
+
+
+def _wake_languages() -> list[str]:
+    primary = (settings.WAKE_WORD_LANGUAGE or "tr-TR").strip() or "tr-TR"
+    langs = [primary]
+    if primary.lower().startswith("tr"):
+        langs.extend(["tr-TR", "en-US"])
+    else:
+        langs.extend(["tr-TR", "en-US"])
+    out = []
+    for lang in langs:
+        if lang and lang not in out:
+            out.append(lang)
+    return out
+
+
+def _audio_rms(audio) -> int:
+    try:
+        return audioop.rms(audio.frame_data, audio.sample_width)
+    except Exception:
+        return 0
+
+
 def wait_for_wake_word(stop_flag_check=lambda: False) -> bool:
-    """
-    Uyandırma kelimesi duyulana kadar bloklar. stop_flag_check() True
-    dönerse döngüden çıkar (UI'dan "dinlemeyi durdur" gibi bir kontrol
-    için kullanılabilir). Uyandırma kelimesi duyulursa True döner.
-    """
     try:
         with sr.Microphone() as source:
-            log.info(f"Wake-word dinleme başladı. Kullanılan mikrofon: {source.device_index}")
-            _recognizer.adjust_for_ambient_noise(source, duration=0.3)
-            if _recognizer.energy_threshold > 400:
-                _recognizer.energy_threshold = 250
+            norm = _normalize_wake_setting(settings.WAKE_WORD)
+            log.info(
+                f"Wake-word dinleme (kelime={settings.WAKE_WORD!r}→{norm!r}, "
+                f"diller={_wake_languages()}, energy={_recognizer.energy_threshold}, "
+                f"mic={source.device_index})"
+            )
+            try:
+                _recognizer.adjust_for_ambient_noise(source, duration=0.2)
+            except Exception:
+                pass
+            _recognizer.dynamic_energy_threshold = False
+            # Kısa kelime için eşiği düşük tut
+            _recognizer.energy_threshold = min(max(_recognizer.energy_threshold, 80), 150)
+
             while not stop_flag_check():
                 try:
-                    audio = _recognizer.listen(source, timeout=3, phrase_time_limit=4)
+                    # Biraz daha uzun: «rıfkı» kesilmesin
+                    audio = _recognizer.listen(
+                        source, timeout=3.0, phrase_time_limit=4.0
+                    )
                 except sr.WaitTimeoutError:
-                    log.debug("Wake-word: 3 saniyede ses algılanmadı (sessizlik).")
                     continue
 
-                try:
-                    text = _recognizer.recognize_google(audio, language=settings.WAKE_WORD_LANGUAGE)
-                except sr.UnknownValueError:
-                    # TEŞHİS AMAÇLI: ses geldi ama hiçbir kelimeye çözülemedi.
-                    log.info("Wake-word: ses algılandı ama metne çevrilemedi (UnknownValueError).")
-                    continue
-                except sr.RequestError as e:
-                    log.error(f"Wake-word: STT servis hatası: {e}")
-                    continue
+                rms = _audio_rms(audio)
+                log.info(f"Wake-word: ses parçası RMS={rms}")
 
-                # TEŞHİS AMAÇLI: algılanan HER metni logla (wake word olsun olmasın).
-                log.info(f"Wake-word: algılanan metin = '{text}'")
+                any_text = False
+                for lang in _wake_languages():
+                    try:
+                        texts = _transcripts_from_google(audio, lang)
+                    except sr.RequestError:
+                        break
+                    for text in texts:
+                        any_text = True
+                        hit = matches_wake_word(text)
+                        log.info(
+                            f"Wake-word [{lang}]: '{text}' → "
+                            f"{'ESLESTI' if hit else 'yok'}"
+                        )
+                        if hit:
+                            log.info(f"Wake word algılandı: {text}")
+                            return True
 
-                if matches_wake_word(text):
-                    log.info(f"Wake word algılandı: {text}")
-                    return True
+                if not any_text and rms > 200:
+                    log.info(
+                        f"Wake-word: ses var ama metin yok (RMS={rms}). "
+                        "Daha net «rıfkı» deyin."
+                    )
     except OSError as e:
         log.error(f"Mikrofon erişim hatası (wake word): {e}")
         raise

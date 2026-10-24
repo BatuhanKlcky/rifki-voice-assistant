@@ -64,27 +64,38 @@ class MobileBridge:
             "history": list(self.history[-40:]),
         }
 
+    def _live_payload(self, **extra) -> dict:
+        """WS canlı olayları: history yok (hello/status API'sinde kalır)."""
+        payload = {
+            "state": self.state,
+            "listening": self.listening,
+            "last_user": self.last_user,
+            "last_assistant": self.last_assistant,
+        }
+        payload.update(extra)
+        return payload
+
     def set_listening(self, active: bool) -> None:
         self.listening = active
-        self._broadcast({"type": "status", **self.status_payload()})
+        self._broadcast(self._live_payload(type="status"))
 
     def publish_state(self, state: str) -> None:
         self.state = state or self.state
-        self._broadcast({"type": "status", **self.status_payload()})
+        self._broadcast(self._live_payload(type="status"))
 
     def publish_user(self, text: str) -> None:
         self.last_user = text
         self.history.append({"role": "user", "text": text})
-        self._broadcast({"type": "user", "text": text, **self.status_payload()})
+        self._broadcast(self._live_payload(type="user", text=text))
 
     def publish_assistant(self, text: str) -> None:
         self.last_assistant = text
         self.history.append({"role": "assistant", "text": text})
-        self._broadcast({"type": "assistant", "text": text, **self.status_payload()})
+        self._broadcast(self._live_payload(type="assistant", text=text))
 
     def publish_error(self, text: str) -> None:
         self.history.append({"role": "error", "text": text})
-        self._broadcast({"type": "error", "text": text, **self.status_payload()})
+        self._broadcast(self._live_payload(type="error", text=text))
 
     def _broadcast(self, payload: dict) -> None:
         loop = self._loop
@@ -124,7 +135,22 @@ class MobileBridge:
             target=self._run_thread, name="RIFKI-MobileBridge", daemon=True
         )
         self._thread.start()
+        threading.Thread(
+            target=self._warmup_apps_catalog,
+            name="RIFKI-AppsWarmup",
+            daemon=True,
+        ).start()
         return True
+
+    @staticmethod
+    def _warmup_apps_catalog() -> None:
+        try:
+            from tools.applications import load_catalog
+
+            load_catalog(force=True)
+            log.info("Uygulama kataloğu arka planda ısıtıldı.")
+        except Exception as e:
+            log.warning(f"Uygulama kataloğu ısınma atlandı: {e}")
 
     def stop(self) -> None:
         self._stop.set()
@@ -142,11 +168,26 @@ class MobileBridge:
     async def _serve(self) -> None:
         from aiohttp import web
 
+        @web.middleware
+        async def _cache_headers(request, handler):
+            resp = await handler(request)
+            path = request.path or ""
+            if path.startswith("/static/"):
+                resp.headers["Cache-Control"] = "public, max-age=300"
+            elif path in ("/", "/index.html") or path.endswith("index.html"):
+                resp.headers["Cache-Control"] = "no-cache"
+            return resp
+
         self._loop = asyncio.get_running_loop()
-        app = web.Application()
+        app = web.Application(middlewares=[_cache_headers])
         app.router.add_get("/", self._handle_index)
         app.router.add_get("/api/status", self._handle_status)
         app.router.add_post("/api/command", self._handle_command)
+        app.router.add_get("/api/screenshot", self._handle_screenshot)
+        app.router.add_get("/api/apps", self._handle_apps)
+        app.router.add_post("/api/apps/launch", self._handle_apps_launch)
+        app.router.add_post("/api/remote", self._handle_remote)
+        app.router.add_get("/api/volume", self._handle_volume)
         app.router.add_get("/ws", self._handle_ws)
         static = _static_dir()
         if static.is_dir():
@@ -191,7 +232,10 @@ class MobileBridge:
         index = _static_dir() / "index.html"
         if not index.is_file():
             return web.Response(text="Mobil panel bulunamadı.", status=500)
-        return web.FileResponse(index)
+        return web.FileResponse(
+            index,
+            headers={"Cache-Control": "no-cache"},
+        )
 
     async def _handle_status(self, request):
         from aiohttp import web
@@ -221,6 +265,165 @@ class MobileBridge:
         except Exception as e:
             log.error(f"Mobil komut hatası: {e}")
             return web.json_response({"error": str(e)}, status=500)
+        return web.json_response({"reply": reply, **self.status_payload()})
+
+    async def _handle_screenshot(self, request):
+        from aiohttp import web
+
+        if not self._token_ok(request):
+            return web.json_response({"error": "yetkisiz"}, status=401)
+        try:
+            max_width = int(request.rel_url.query.get("w") or "1280")
+        except ValueError:
+            max_width = 1280
+        try:
+            quality = int(request.rel_url.query.get("q") or "72")
+        except ValueError:
+            quality = 72
+        max_width = max(320, min(1920, max_width))
+        quality = max(40, min(90, quality))
+        live = (request.rel_url.query.get("live") or "").lower() in ("1", "true", "yes")
+        if live:
+            max_width = min(max_width, 960)
+            quality = min(quality, 55)
+
+        loop = asyncio.get_running_loop()
+        try:
+            from tools.system import capture_screenshot_for_mobile
+
+            jpeg = await loop.run_in_executor(
+                None,
+                lambda: capture_screenshot_for_mobile(max_width, quality),
+            )
+            if not jpeg or len(jpeg) < 100:
+                raise RuntimeError("boş görüntü")
+        except Exception as e:
+            log.error(f"Mobil ekran görüntüsü hatası: {e}", exc_info=True)
+            return web.json_response(
+                {"error": f"ekran görüntüsü alınamadı ({e})"},
+                status=500,
+            )
+        if not live:
+            log.info(f"Mobil ekran görüntüsü gönderildi: {len(jpeg)} bayt (JPEG)")
+        return web.Response(
+            body=jpeg,
+            content_type="image/jpeg",
+            headers={
+                "Cache-Control": "no-store",
+                "Content-Length": str(len(jpeg)),
+            },
+        )
+
+    async def _handle_volume(self, request):
+        from aiohttp import web
+
+        if not self._token_ok(request):
+            return web.json_response({"error": "yetkisiz"}, status=401)
+        loop = asyncio.get_running_loop()
+        try:
+            from tools.system import get_volume_info
+
+            info = await loop.run_in_executor(None, get_volume_info)
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+        return web.json_response(info)
+
+    async def _handle_remote(self, request):
+        from aiohttp import web
+
+        if not self._token_ok(request):
+            return web.json_response({"error": "yetkisiz"}, status=401)
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"error": "geçersiz json"}, status=400)
+        action = (body.get("action") or "").strip()
+        if not action:
+            return web.json_response({"error": "action gerekli"}, status=400)
+
+        from bridge.remote_actions import run_remote_action
+
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
+            None, lambda: run_remote_action(action, body)
+        )
+        if not result.get("ok"):
+            status = 400 if result.get("needs_confirm") else 400
+            if "bilinmeyen" in (result.get("error") or ""):
+                status = 400
+            return web.json_response(result, status=status)
+
+        reply = result.get("reply") or ""
+        label = {
+            "volume_up": "Ses +",
+            "volume_down": "Ses −",
+            "toggle_mute": "Sessiz",
+            "mute": "Sessiz",
+            "unmute": "Sesi aç",
+            "media_play_pause": "Medya ▶/❚❚",
+            "media_next": "Sonraki",
+            "media_prev": "Önceki",
+            "lock": "Kilitle",
+            "sleep": "Uyku",
+            "shutdown": "Kapat",
+            "restart": "Yeniden başlat",
+            "open_url": "URL aç",
+            "cancel_shutdown": "Kapatmayı iptal",
+        }.get(action, action)
+        # Güç işlemlerini sohbette göster; sık ses/medya spam olmasın
+        if action in ("lock", "sleep", "shutdown", "restart", "open_url", "cancel_shutdown"):
+            self.publish_user(label)
+            if reply:
+                self.publish_assistant(reply)
+        return web.json_response(result)
+
+    async def _handle_apps(self, request):
+        from aiohttp import web
+
+        if not self._token_ok(request):
+            return web.json_response({"error": "yetkisiz"}, status=401)
+        q = (request.rel_url.query.get("q") or "").strip()
+        try:
+            limit = int(request.rel_url.query.get("limit") or "400")
+        except ValueError:
+            limit = 400
+        loop = asyncio.get_running_loop()
+        try:
+            from tools.applications import list_applications
+
+            apps = await loop.run_in_executor(
+                None, lambda: list_applications(q, limit)
+            )
+        except Exception as e:
+            log.error(f"Uygulama listesi hatası: {e}")
+            return web.json_response({"error": "liste alınamadı"}, status=500)
+        return web.json_response({"apps": apps, "count": len(apps)})
+
+    async def _handle_apps_launch(self, request):
+        from aiohttp import web
+
+        if not self._token_ok(request):
+            return web.json_response({"error": "yetkisiz"}, status=401)
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"error": "geçersiz json"}, status=400)
+        name = (body.get("name") or "").strip()
+        if not name:
+            return web.json_response({"error": "uygulama adı gerekli"}, status=400)
+        # Ham yol / AppID kabul etme — yalnızca katalog adı
+        if any(ch in name for ch in ("\\", "/", ":", ";", "|")) or len(name) > 120:
+            return web.json_response({"error": "geçersiz uygulama adı"}, status=400)
+        loop = asyncio.get_running_loop()
+        try:
+            from tools.applications import open_application
+
+            reply = await loop.run_in_executor(None, open_application, name)
+        except Exception as e:
+            log.error(f"Mobil uygulama açma hatası: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+        self.publish_user(f"Uygulama aç: {name}")
+        self.publish_assistant(reply)
         return web.json_response({"reply": reply, **self.status_payload()})
 
     async def _handle_ws(self, request):

@@ -10,10 +10,11 @@ import datetime
 import html
 import threading
 from ctypes import wintypes
+from typing import Optional
 
 import psutil
 from PyQt5.QtCore import (
-    Qt, QThread, pyqtSignal, pyqtSlot, QTimer, QPoint, QEvent, QMetaObject, Q_ARG,
+    Qt, QThread, pyqtSignal, pyqtSlot, QTimer, QPoint, QPointF, QEvent, QMetaObject, Q_ARG,
 )
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -21,12 +22,17 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QFont, QColor, QPainter, QPen, QPixmap, QIcon
 
-from ui.animations import CoreWidget, RadialGauge, WaveformWidget, paint_command_deck, paint_brackets
+from ui.animations import (
+    CoreWidget, RadialGauge, WaveformWidget, paint_command_deck, paint_brackets,
+    AsciiBackdrop, AsciiEyeAnchor,
+)
 from bridge.pairing import ensure_bridge_token, tunnel_manager
 from bridge.service import mobile_bridge
 from config.settings import settings
 from core.ai import rifki_brain
 from core.logger import get_logger
+from core.updater import ReleaseInfo, check_for_update, download_setup, launch_installer
+from core.version import APP_VERSION
 from ui.first_run import maybe_show_first_run
 from ui.mobile_pairing import MobilePairingWindow
 from voice.wake_word import wait_for_wake_word, matches_wake_word
@@ -42,11 +48,13 @@ HTTRANSPARENT = -1
 MA_NOACTIVATE = 3
 SC_MINIMIZE = 0xF020
 HWND_BOTTOM = 1
+HWND_TOPMOST = -1
 SW_SHOWNOACTIVATE = 4
 SWP_NOSIZE = 0x0001
 SWP_NOMOVE = 0x0002
 SWP_NOACTIVATE = 0x0010
 SWP_SHOWWINDOW = 0x0040
+SWP_NOOWNERZORDER = 0x0200
 
 _user32 = ctypes.windll.user32
 
@@ -246,6 +254,38 @@ class ConfirmBridge:
 STOP_LISTENING_PHRASES = ("dinlemeyi durdur", "dinlemeyi kapat", "sustur", "sus artık")
 
 
+class UpdateWorker(QThread):
+    """Arka planda GitHub Releases kontrol / indirme."""
+
+    checked = pyqtSignal(object)  # ReleaseInfo | None
+    failed = pyqtSignal(str)
+    progress = pyqtSignal(int, int)
+    downloaded = pyqtSignal(str)  # setup path
+
+    def __init__(self, mode: str = "check", release: Optional[ReleaseInfo] = None):
+        super().__init__()
+        self.mode = mode  # "check" | "download"
+        self.release = release
+
+    def run(self):
+        try:
+            if self.mode == "check":
+                info = check_for_update()
+                self.checked.emit(info)
+                return
+            if self.mode == "download" and self.release is not None:
+                path = download_setup(
+                    self.release,
+                    on_progress=lambda d, t: self.progress.emit(d, t),
+                )
+                self.downloaded.emit(str(path))
+                return
+            self.failed.emit("Geçersiz güncelleme işlemi.")
+        except Exception as e:
+            log.error(f"Güncelleme işçisi: {e}")
+            self.failed.emit(str(e))
+
+
 class VoiceWorker(QThread):
     status_changed = pyqtSignal(str)
     user_message = pyqtSignal(str)
@@ -375,6 +415,7 @@ class MainWindow(QWidget):
         self.setAttribute(Qt.WA_NoSystemBackground, True)
 
         self.setMinimumSize(900, 600)
+        self.ascii_backdrop = AsciiBackdrop(pixel_size=11)
         self._build_ui()
         self._apply_theme()
         self._setup_tray_icon()
@@ -395,6 +436,11 @@ class MainWindow(QWidget):
 
         self._mobile_busy = False
         self._pairing_window = None
+        self._pending_release: Optional[ReleaseInfo] = None
+        self._update_worker: Optional[UpdateWorker] = None
+        self._update_action = None
+        # Mobil QR açıkken HUD tıklamayı yutmasın (pencere camın arkasında kalabiliyor)
+        self._pairing_mouse_passthrough = False
         ensure_bridge_token()
         mobile_bridge.set_command_handler(self._handle_mobile_command)
         if mobile_bridge.start():
@@ -403,6 +449,8 @@ class MainWindow(QWidget):
                 f"{settings.MOBILE_BRIDGE_PORT}"
             )
 
+        self._disk_sample_every = 5  # her N stats tick (2s * 5 = 10s)
+        self._stats_tick = 0
         self._stats_timer = QTimer(self)
         self._stats_timer.timeout.connect(self._update_stats)
         self._stats_timer.start(2000)
@@ -419,7 +467,11 @@ class MainWindow(QWidget):
 
         self._desktop_timer = QTimer(self)
         self._desktop_timer.timeout.connect(self._keep_behind_windows)
-        self._desktop_timer.start(700)
+        self._desktop_timer.start(2500)
+
+        self._ascii_timer = QTimer(self)
+        self._ascii_timer.timeout.connect(self.update)
+        self._ascii_timer.start(45)  # ~22 FPS akıcı ve hafif animasyon
 
     def _setup_tray_icon(self):
         icon = QIcon(_build_tray_icon_pixmap())
@@ -428,7 +480,7 @@ class MainWindow(QWidget):
             self.tray_icon = None
             return
         self.tray_icon = QSystemTrayIcon(icon, self)
-        self.tray_icon.setToolTip("RIFKI")
+        self.tray_icon.setToolTip(f"RIFKI v{APP_VERSION}")
         menu = QMenu()
         show_action = QAction("Göster", self)
         show_action.triggered.connect(self._show_from_tray)
@@ -438,24 +490,167 @@ class MainWindow(QWidget):
         quit_action.triggered.connect(self._quit_app)
         mobile_action = QAction("Mobil bağlantı", self)
         mobile_action.triggered.connect(self._open_mobile_pairing)
+        self._update_action = QAction("Güncellemeleri kontrol et", self)
+        self._update_action.triggered.connect(self._manual_update_check)
         menu.addAction(show_action)
         menu.addAction(hide_action)
         menu.addAction(mobile_action)
+        menu.addSeparator()
+        menu.addAction(self._update_action)
         menu.addSeparator()
         menu.addAction(quit_action)
         self.tray_icon.setContextMenu(menu)
         self.tray_icon.show()
         QTimer.singleShot(600, self._announce_started)
+        if settings.AUTO_UPDATE:
+            QTimer.singleShot(12_000, self._silent_update_check)
 
     def _open_mobile_pairing(self):
         ensure_bridge_token()
         if not mobile_bridge.start():
             mobile_bridge.start()
         if self._pairing_window is None:
-            self._pairing_window = MobilePairingWindow()
+            # Ana HUD wallpaper katmanında; pairing ayrı top-level dialog olmalı
+            self._pairing_window = MobilePairingWindow(None)
+            self._pairing_window.closed.connect(self._on_pairing_closed)
+        self._pairing_mouse_passthrough = True
         self._pairing_window.show()
         self._pairing_window.raise_()
         self._pairing_window.activateWindow()
+        try:
+            hwnd = int(self._pairing_window.winId())
+            _user32.SetWindowPos(
+                hwnd,
+                HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOOWNERZORDER,
+            )
+            _user32.SetForegroundWindow(hwnd)
+        except Exception as e:
+            log.error(f"Mobil pencere öne alınamadı: {e}")
+
+    def _on_pairing_closed(self):
+        self._pairing_mouse_passthrough = False
+
+    def _silent_update_check(self):
+        if not settings.AUTO_UPDATE:
+            return
+        self._start_update_check(silent=True)
+
+    def _manual_update_check(self):
+        if self._pending_release is not None:
+            self._prompt_install_update(self._pending_release)
+            return
+        self._start_update_check(silent=False)
+
+    def _start_update_check(self, silent: bool):
+        if self._update_worker is not None and self._update_worker.isRunning():
+            return
+        if self._update_action is not None and not silent:
+            self._update_action.setEnabled(False)
+            self._update_action.setText("Kontrol ediliyor…")
+        worker = UpdateWorker("check")
+        self._update_worker = worker
+        worker.checked.connect(
+            lambda info: self._on_update_checked(info, silent=silent)
+        )
+        worker.failed.connect(
+            lambda err: self._on_update_failed(err, silent=silent)
+        )
+        worker.start()
+
+    def _on_update_checked(self, info, silent: bool):
+        if self._update_action is not None:
+            self._update_action.setEnabled(True)
+        if info is None:
+            if self._update_action is not None:
+                self._update_action.setText("Güncellemeleri kontrol et")
+            if not silent:
+                QMessageBox.information(
+                    None,
+                    "RIFKI",
+                    f"RIFKI güncel (v{APP_VERSION}).",
+                )
+            return
+        self._pending_release = info
+        if self._update_action is not None:
+            self._update_action.setText(f"Güncellemeyi yükle (v{info.version})")
+        if silent and self.tray_icon is not None:
+            self.tray_icon.showMessage(
+                "RIFKI güncelleme",
+                f"v{info.version} hazır. Tepsi → Güncellemeyi yükle.",
+                QSystemTrayIcon.Information,
+                10000,
+            )
+            return
+        self._prompt_install_update(info)
+
+    def _on_update_failed(self, err: str, silent: bool):
+        if self._update_action is not None:
+            self._update_action.setEnabled(True)
+            self._update_action.setText("Güncellemeleri kontrol et")
+        if silent:
+            log.warning(f"Otomatik güncelleme kontrolü: {err}")
+            return
+        QMessageBox.warning(
+            None,
+            "RIFKI",
+            f"Güncelleme kontrol edilemedi:\n{err}",
+        )
+
+    def _prompt_install_update(self, info: ReleaseInfo):
+        box = QMessageBox(None)
+        box.setWindowTitle("RIFKI güncelleme")
+        box.setIcon(QMessageBox.Question)
+        box.setWindowFlag(Qt.WindowStaysOnTopHint, True)
+        box.setText(f"Yeni sürüm: v{info.version}\nŞu an: v{APP_VERSION}")
+        box.setInformativeText(
+            "Kurulum indirilip sessizce uygulanacak. RIFKI kapanıp yeniden açılır."
+        )
+        install = box.addButton("Şimdi güncelle", QMessageBox.AcceptRole)
+        box.addButton("Sonra", QMessageBox.RejectRole)
+        box.exec_()
+        if box.clickedButton() is install:
+            self._download_and_install(info)
+
+    def _download_and_install(self, info: ReleaseInfo):
+        if self._update_worker is not None and self._update_worker.isRunning():
+            return
+        if self._update_action is not None:
+            self._update_action.setEnabled(False)
+            self._update_action.setText("İndiriliyor…")
+        if self.tray_icon is not None:
+            self.tray_icon.showMessage(
+                "RIFKI",
+                f"v{info.version} indiriliyor…",
+                QSystemTrayIcon.Information,
+                5000,
+            )
+        worker = UpdateWorker("download", release=info)
+        self._update_worker = worker
+        worker.downloaded.connect(self._on_update_downloaded)
+        worker.failed.connect(
+            lambda err: self._on_update_failed(err, silent=False)
+        )
+        worker.start()
+
+    def _on_update_downloaded(self, path: str):
+        try:
+            launch_installer(path)
+        except Exception as e:
+            self._on_update_failed(str(e), silent=False)
+            return
+        if self.tray_icon is not None:
+            self.tray_icon.showMessage(
+                "RIFKI",
+                "Kurulum başladı. RIFKI kapanıyor…",
+                QSystemTrayIcon.Information,
+                4000,
+            )
+        QTimer.singleShot(800, self._quit_app)
 
     def _announce_started(self):
         if self.tray_icon is not None:
@@ -486,10 +681,17 @@ class MainWindow(QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
+        if hasattr(self, "_ascii_timer") and not self._ascii_timer.isActive():
+            self._ascii_timer.start(45)
         QTimer.singleShot(0, self._anchor_to_desktop)
         if not self._listening_autostarted:
             self._listening_autostarted = True
             QTimer.singleShot(400, self._arm_listening)
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        if hasattr(self, "_ascii_timer"):
+            self._ascii_timer.stop()
 
     def _arm_listening(self):
         if self._listening_active or self.voice_worker.isRunning():
@@ -551,15 +753,25 @@ class MainWindow(QWidget):
                     Q_ARG(str, state),
                 )
 
-            try:
-                reply = rifki_brain.process(
-                    text,
-                    ask_fn=self.confirm_bridge.ask,
-                    status_callback=_status,
-                )
-            except Exception as e:
-                log.error(f"Mobil komut AI hatası: {e}")
-                reply = "Yapay zekâ servisine şu anda ulaşamıyorum."
+            # AI'sız kısa yollar (OmniRoute kapalıysa da çalışır)
+            folded = (text or "").casefold()
+            if any(k in folded for k in ("ekran görüntüsü", "ekran goruntusu", "screenshot", "ekranı al", "ekrani al")):
+                try:
+                    from tools.system import take_screenshot
+                    reply = take_screenshot() + " Mobilde görmek için üstteki «Ekran görüntüsü» düğmesini kullan."
+                except Exception as e:
+                    log.error(f"Mobil screenshot kısayolu: {e}")
+                    reply = "Ekran görüntüsü alınamadı."
+            else:
+                try:
+                    reply = rifki_brain.process(
+                        text,
+                        ask_fn=self.confirm_bridge.ask,
+                        status_callback=_status,
+                    )
+                except Exception as e:
+                    log.error(f"Mobil komut AI hatası: {e}")
+                    reply = "Yapay zekâ servisine şu anda ulaşamıyorum."
 
             mobile_bridge.publish_assistant(reply)
             QMetaObject.invokeMethod(
@@ -587,12 +799,26 @@ class MainWindow(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        paint_command_deck(painter, self.rect(), glass=True)
+        painter.fillRect(self.rect(), QColor(2, 6, 12))
+
+        if hasattr(self, "_eye_anchor") and self._eye_anchor is not None:
+            anchor_pos = self._eye_anchor.mapTo(self, QPoint(0, 0))
+            eye_cx = anchor_pos.x() + self._eye_anchor.width() / 2.0
+            eye_cy = anchor_pos.y() + self._eye_anchor.height() / 2.0
+            eye_center = QPointF(eye_cx, eye_cy)
+        else:
+            eye_center = QPointF(self.width() / 2.0, self.height() * 0.44)
+
+        if hasattr(self, "ascii_backdrop") and self.ascii_backdrop is not None:
+            self.ascii_backdrop.paint(painter, self.width(), self.height(), eye_center)
+        else:
+            paint_command_deck(painter, self.rect(), glass=True)
         painter.end()
 
     def nativeEvent(self, eventType, message):
         """Arka planda kalır. Boş cam tıklamayı masaüstüne bırakır.
-        Paneller ve düğmeler kendi tıklamasını tutar."""
+        Paneller ve düğmeler kendi tıklamasını tutar.
+        Mobil QR açıkken tüm HUD tıklamayı geçirir (QR arkasında kalabiliyor)."""
         try:
             if eventType in (b"windows_generic_MSG", "windows_generic_MSG"):
                 msg = wintypes.MSG.from_address(int(message))
@@ -600,8 +826,9 @@ class MainWindow(QWidget):
                     return True, MA_NOACTIVATE
                 if msg.message == WM_SYSCOMMAND and (int(msg.wParam) & 0xFFF0) == SC_MINIMIZE:
                     return True, 0
-                if msg.message == WM_NCHITTEST and self._point_is_glass(msg.lParam):
-                    return True, HTTRANSPARENT
+                if msg.message == WM_NCHITTEST:
+                    if self._pairing_mouse_passthrough or self._point_is_glass(msg.lParam):
+                        return True, HTTRANSPARENT
         except Exception as e:
             log.error(f"Masaüstü katmanı hatası: {e}")
         return QWidget.nativeEvent(self, eventType, message)
@@ -614,7 +841,7 @@ class MainWindow(QWidget):
         if not self.rect().contains(local):
             return False
         widget = self.childAt(local)
-        if widget is None or widget is self._center_host:
+        if widget is None or widget is self._center_host or widget is getattr(self, "_eye_anchor", None):
             return True
         return False
 
@@ -782,7 +1009,7 @@ class MainWindow(QWidget):
 
     def _build_center(self):
         host = QWidget()
-        host.setFixedWidth(480)
+        host.setFixedWidth(540)
         host.setAttribute(Qt.WA_TranslucentBackground, True)
         host.setAutoFillBackground(False)
         host.setStyleSheet("background: transparent;")
@@ -792,16 +1019,18 @@ class MainWindow(QWidget):
         center.setSpacing(4)
         center.addStretch(1)
 
-        kicker = QLabel("ÇEKİRDEK")
+        kicker = QLabel("SİBERNETİK GÖZ")
         kicker.setAlignment(Qt.AlignCenter)
         kicker.setStyleSheet(
-            "color: #6D8FA3; font-family: Consolas; font-size: 10px; letter-spacing: 3px; background: transparent;"
+            f"color: {NEON_CYAN}; font-family: Consolas; font-size: 10px; letter-spacing: 3px; background: transparent;"
         )
         center.addWidget(kicker)
 
-        self.core_widget = CoreWidget()
-        center.addWidget(self.core_widget, alignment=Qt.AlignHCenter)
+        self._eye_anchor = AsciiEyeAnchor(self.ascii_backdrop)
+        self.core_widget = self._eye_anchor
+        center.addWidget(self._eye_anchor, alignment=Qt.AlignHCenter)
 
+        center.addSpacing(16)
         self.status_label = QLabel("BEKLEMEDE")
         self.status_label.setAlignment(Qt.AlignCenter)
         self.status_label.setStyleSheet(
@@ -819,7 +1048,7 @@ class MainWindow(QWidget):
 
         self.waveform = WaveformWidget()
         self.waveform.setFixedSize(400, 56)
-        center.addSpacing(8)
+        center.addSpacing(10)
         center.addWidget(self.waveform, alignment=Qt.AlignHCenter)
         center.addStretch(1)
         return host
@@ -962,7 +1191,7 @@ class MainWindow(QWidget):
         self._set_directive(f"Bağlantı kapalı. Açıldığında «{self._wake_pretty}» ile uyanırım.")
         self.status_label.setText("BEKLEMEDE")
         self.status_detail.setText("Ses bağlantısı kapalı")
-        self.core_widget.set_state("IDLE")
+        self.core_widget.set_state("OFF")
         self.waveform.set_state("IDLE")
         self._set_sys_pill("OFF")
         self._paint_pipeline("OFF")
@@ -975,11 +1204,21 @@ class MainWindow(QWidget):
             self._listening_active = True
             self._style_arm_button(True)
             self.audio_value.setText("AÇIK")
-            self._set_directive(f"«{self._wake_pretty}» deyin, ardından komutunuzu söyleyin.")
+            self._set_directive(
+                f"Dinliyorum — netçe «{self._wake_pretty}» deyin "
+                "(mikrofon açık, internet gerekli)."
+            )
             self.status_label.setText("UYANDIRMA")
             self.status_detail.setText("Uyandırma kelimesi bekleniyor")
             mobile_bridge.set_listening(True)
             mobile_bridge.publish_state("IDLE")
+            if self.tray_icon is not None:
+                self.tray_icon.showMessage(
+                    "RIFKI dinliyor",
+                    f"«{self._wake_pretty}» deyin.",
+                    QSystemTrayIcon.Information,
+                    4000,
+                )
         else:
             self.voice_worker.stop()
             self._enter_standby_ui()
@@ -1065,14 +1304,17 @@ class MainWindow(QWidget):
         self.confirm_bridge.provide_answer(answer)
 
     def _update_stats(self):
-        self.cpu_gauge.set_value(psutil.cpu_percent())
+        # interval=None: blocking yok (önceki çağrıdan bu yana ölçüm)
+        self.cpu_gauge.set_value(psutil.cpu_percent(interval=None))
         self.ram_gauge.set_value(psutil.virtual_memory().percent)
-        try:
-            import os as _os
-            disk_path = "C:\\" if _os.name == "nt" else "/"
-            self.disk_gauge.set_value(psutil.disk_usage(disk_path).percent)
-        except Exception:
-            pass
+        self._stats_tick += 1
+        if self._stats_tick == 1 or self._stats_tick % self._disk_sample_every == 0:
+            try:
+                import os as _os
+                disk_path = "C:\\" if _os.name == "nt" else "/"
+                self.disk_gauge.set_value(psutil.disk_usage(disk_path).percent)
+            except Exception:
+                pass
 
     def _update_clock(self):
         now = datetime.datetime.now()

@@ -20,6 +20,17 @@ başlangıçta YAPILMAZ, çünkü bu gereksiz bir maliyet/gecikme olur).
 
 import sys
 
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 from config.settings import settings
 from core.logger import get_logger
 from core.memory import long_term_memory  # noqa: F401 (DB init tetiklenir)
@@ -36,6 +47,7 @@ def print_startup_banner():
 
 def run_component_checks():
     checks = []
+    frozen = getattr(sys, "frozen", False)
 
     # AI bağlantısı (sadece ayar kontrolü, gerçek network çağrısı yok)
     if settings.GEMINI_API_KEY and not settings.GEMINI_API_KEY.startswith("AIzaSyXXXX"):
@@ -43,15 +55,16 @@ def run_component_checks():
     else:
         checks.append(("Yapay zekâ bağlantısı (Gemini API anahtarı)", False))
 
-    # Mikrofon
-    try:
-        import speech_recognition as sr
+    # Mikrofon listesi EXE'de yavaş; kaynak çalıştırmada kalsın
+    if not frozen:
+        try:
+            import speech_recognition as sr
 
-        mic_list = sr.Microphone.list_microphone_names()
-        checks.append(("Mikrofon", len(mic_list) > 0))
-    except Exception as e:
-        log.error(f"Mikrofon kontrolü hatası: {e}")
-        checks.append(("Mikrofon", False))
+            mic_list = sr.Microphone.list_microphone_names()
+            checks.append(("Mikrofon", len(mic_list) > 0))
+        except Exception as e:
+            log.error(f"Mikrofon kontrolü hatası: {e}")
+            checks.append(("Mikrofon", False))
 
     # Ses sistemi (TTS motoru importlanabiliyor mu)
     try:
@@ -80,17 +93,18 @@ def run_component_checks():
         log.error(f"Tool sistemi kontrolü hatası: {e}")
         checks.append(("Tool sistemi", False))
 
-    # İnternet bağlantısı
-    try:
-        import socket
+    # İnternet: EXE açılışını geciktirmesin
+    if not frozen:
+        try:
+            import socket
 
-        socket.create_connection(("8.8.8.8", 53), timeout=2)
-        checks.append(("İnternet bağlantısı", True))
-    except Exception:
-        checks.append(("İnternet bağlantısı", False))
+            socket.create_connection(("8.8.8.8", 53), timeout=2)
+            checks.append(("İnternet bağlantısı", True))
+        except Exception:
+            checks.append(("İnternet bağlantısı", False))
 
     for name, ok in checks:
-        symbol = "✓" if ok else "✗"
+        symbol = "[OK]" if ok else "[X]"
         print(f"  {symbol} {name}")
 
     return all(ok for _, ok in checks)

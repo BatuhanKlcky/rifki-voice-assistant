@@ -14,25 +14,99 @@
       <p class="kicker">RIFKI</p>
       <h1>Mobil köprü</h1>
     </div>
-    <div id="badge" class="badge off">OFF</div>
+    <div id="badge" class="badge off"><span class="dot"></span><span class="label">OFF</span></div>
   </header>
 
-  <section id="auth" class="card hidden">
+  <section id="auth" class="auth-card hidden">
     <label for="token">Erişim tokeni</label>
     <input id="token" type="password" autocomplete="off" placeholder="MOBILE_BRIDGE_TOKEN" />
     <button id="saveToken" type="button">Kaydet ve bağlan</button>
     <p class="hint">Token .env içindeki MOBILE_BRIDGE_TOKEN ile aynı olmalı.</p>
   </section>
 
-  <section class="card">
-    <p class="meta" id="meta">Bağlanıyor…</p>
-    <div id="log" class="log" aria-live="polite"></div>
+  <section class="actions" id="quickActions">
+    <button type="button" id="btnShot" class="action">
+      <span class="ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h3l2-2h6l2 2h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+      </span>
+      Ekran görüntüsü
+    </button>
+    <button type="button" id="btnApps" class="action secondary">
+      <span class="ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>
+      </span>
+      Uygulamalar
+    </button>
   </section>
+
+  <section class="remote-panel" id="remotePanel" aria-label="Uzaktan kontrol">
+    <div class="remote-head">
+      <h2>Kontrol</h2>
+      <span class="vol-pill" id="volPill">Ses —</span>
+    </div>
+    <div class="remote-grid" id="remoteGrid">
+      <button type="button" class="rc" data-action="volume_down" aria-label="Ses azalt">− Ses</button>
+      <button type="button" class="rc" data-action="toggle_mute" aria-label="Sessiz">Sessiz</button>
+      <button type="button" class="rc" data-action="volume_up" aria-label="Ses artır">+ Ses</button>
+      <button type="button" class="rc" data-action="media_prev" aria-label="Önceki">⏮</button>
+      <button type="button" class="rc primary" data-action="media_play_pause" aria-label="Oynat duraklat">▶ / ❚❚</button>
+      <button type="button" class="rc" data-action="media_next" aria-label="Sonraki">⏭</button>
+      <button type="button" class="rc" data-action="lock" aria-label="Kilitle">Kilitle</button>
+      <button type="button" class="rc warn" data-action="sleep" data-confirm="Bilgisayar uykuya alınsın mı?" aria-label="Uyku">Uyku</button>
+      <button type="button" class="rc danger" data-action="shutdown" data-confirm="Bilgisayar 5 sn içinde kapansın mı?" aria-label="Kapat">Kapat</button>
+    </div>
+    <div class="remote-row">
+      <button type="button" class="rc ghost-rc" data-action="restart" data-confirm="Yeniden başlatılsın mı?">Yeniden başlat</button>
+      <button type="button" class="rc ghost-rc" data-action="cancel_shutdown">Kapatmayı iptal</button>
+    </div>
+    <form id="urlForm" class="url-form">
+      <input id="urlInput" type="url" inputmode="url" placeholder="https://… URL aç" autocomplete="url" />
+      <button type="submit" class="rc primary">Aç</button>
+    </form>
+  </section>
+
+  <section class="live-panel" id="livePanel" aria-label="Canlı ekran">
+    <div class="live-head">
+      <h2>Canlı ekran</h2>
+      <div class="live-tools">
+        <button type="button" id="btnLiveToggle" class="ghost">Canlı: kapalı</button>
+        <button type="button" id="btnLiveRefresh" class="ghost">Yenile</button>
+      </div>
+    </div>
+    <div class="live-frame">
+      <img id="liveImg" alt="PC ekranı" hidden />
+      <p class="live-empty" id="liveEmpty">Yenile veya canlıyı aç</p>
+    </div>
+  </section>
+
+  <section id="appsPanel" class="apps-panel hidden">
+    <div class="apps-head">
+      <label for="appSearch">Uygulama ara / aç</label>
+      <button type="button" id="appsClose" class="ghost">Kapat</button>
+    </div>
+    <input id="appSearch" type="search" enterkeyhint="search" placeholder="Chrome, Spotify…" autocomplete="off" />
+    <p class="meta" id="appsMeta">Yükleniyor…</p>
+    <ul id="appsList" class="apps-list"></ul>
+  </section>
+
+  <p class="meta status-line" id="meta">Bağlanıyor…</p>
+  <div id="log" class="log" aria-live="polite"></div>
 
   <form id="cmdForm" class="composer">
     <input id="cmd" type="text" enterkeyhint="send" autocomplete="off" placeholder="Komut yaz…" />
-    <button type="submit" id="send">Gönder</button>
+    <button type="submit" id="send" class="send">
+      <span class="ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22 11 13 2 9z"/></svg>
+      </span>
+      Gönder
+    </button>
   </form>
+
+  <div id="lightbox" class="lightbox hidden" role="dialog" aria-modal="true" aria-label="Ekran görüntüsü">
+    <button type="button" id="lightboxClose" class="lightbox-close" aria-label="Kapat">×</button>
+    <img id="lightboxImg" alt="Büyütülmüş ekran görüntüsü" />
+    <p class="lightbox-hint">Kapatmak için dokun</p>
+  </div>
 
   <script src="/static/app.js"></script>
 </body>

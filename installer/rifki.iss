@@ -1,6 +1,6 @@
 ; RIFKI Windows Setup — OmniRoute bilgilendirme + .env formu
 #define MyAppName "RIFKI"
-#define MyAppVersion "2.1.0"
+#define MyAppVersion "2.3.0"
 #define MyAppPublisher "RIFKI"
 #define MyAppExeName "RIFKI.exe"
 ; Resmi Windows kurulum: OmniRoute.Setup.3.8.51.exe (~555 MB)
@@ -25,7 +25,8 @@ PrivilegesRequired=lowest
 ArchitecturesInstallIn64BitMode=x64compatible
 SetupLogging=yes
 UninstallDisplayIcon={app}\{#MyAppExeName}
-VersionInfoVersion=2.1.0.0
+SetupIconFile=..\assets\rifki.ico
+VersionInfoVersion=2.3.0.0
 VersionInfoProductName=RIFKI
 
 [Languages]
@@ -36,8 +37,10 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Masaüstü kısayolu oluştur"; GroupDescription: "Ek görevler:"; Flags: unchecked
 
 [Files]
-; Ana uygulama (PyInstaller onedir)
-Source: "..\dist\RIFKI\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Ana uygulama (PyInstaller onedir) — .env ASLA paketlenmez / ezilmez
+Source: "..\dist\RIFKI\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: ".env,logs\*,*.log"
+; Masaüstü / Start menü ikonu için ayrı .ico
+Source: "..\assets\rifki.ico"; DestDir: "{app}"; Flags: ignoreversion
 ; OmniRoute payload (varsa)
 Source: "payload\omniroute\*"; DestDir: "{app}\omniroute"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 ; Kurulum yardımcıları (kurulum + gecici cikarma)
@@ -50,9 +53,9 @@ Source: "scripts\check_omniroute.ps1"; Flags: dontcopy
 Source: "pages\omniroute_info.txt"; Flags: dontcopy
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\rifki.ico"
 Name: "{group}\RIFKI kaldır"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\rifki.ico"; Tasks: desktopicon
 
 [Run]
 Filename: "powershell.exe"; \
@@ -204,12 +207,36 @@ begin
   SettingsPage.Values[1] := 'antigravity/gemini-2.5-flash';
 end;
 
+function EnvAlreadyConfigured: Boolean;
+var
+  Dir: String;
+begin
+  { app sabiti wizardda henuz hazir olmayabilir; DirEdit kullan }
+  try
+    Dir := WizardForm.DirEdit.Text;
+  except
+    Dir := '';
+  end;
+  if Trim(Dir) = '' then
+    Dir := ExpandConstant('{autopf}\RIFKI');
+  Result := FileExists(AddBackslash(Dir) + '.env');
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := False;
+  { Güncellemede kayıtlı .env varsa anahtar sayfasını atla }
+  if Assigned(SettingsPage) and (PageID = SettingsPage.ID) and EnvAlreadyConfigured then
+    Result := True;
+end;
+
 function NextButtonClick(CurPageID: Integer): Boolean;
 begin
   Result := True;
   if CurPageID = SettingsPage.ID then
   begin
-    if Trim(SettingsPage.Values[0]) = '' then
+    { İlk kurulumda anahtar zorunlu; güncellemede mevcut .env varsa boş geçilebilir }
+    if (Trim(SettingsPage.Values[0]) = '') and (not EnvAlreadyConfigured) then
     begin
       MsgBox('OmniRoute API anahtarı boş olamaz. OmniRoute panelinizdeki anahtarı yapıştırın.',
         mbError, MB_OK);
@@ -225,8 +252,14 @@ var
 begin
   if CurStep = ssPostInstall then
   begin
-    Key := SettingsPage.Values[0];
-    Model := SettingsPage.Values[1];
+    { Sessiz güncellemede form boş kalır — mevcut .env korunur }
+    Key := '';
+    Model := '';
+    if Assigned(SettingsPage) then
+    begin
+      Key := SettingsPage.Values[0];
+      Model := SettingsPage.Values[1];
+    end;
     if Trim(Model) = '' then
       Model := 'antigravity/gemini-2.5-flash';
     Ps :=

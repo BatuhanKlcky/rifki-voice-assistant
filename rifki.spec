@@ -65,6 +65,10 @@ hiddenimports = [
     "bridge",
     "bridge.service",
     "bridge.pairing",
+    "bridge.remote_actions",
+    "core.version",
+    "core.updater",
+    "tools.media",
     "qrcode",
     "qrcode.image.pil",
 ]
@@ -103,6 +107,7 @@ exe = EXE(
     upx=False,
     console=False,
     disable_windowed_traceback=False,
+    icon=str(Path(SPECPATH) / "assets" / "rifki.ico"),
 )
 
 coll = COLLECT(

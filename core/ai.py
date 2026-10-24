@@ -188,17 +188,34 @@ class OmniRouteAI:
             log.error("İstek zaman aşımına uğradı!")
             return "Bağlantı zaman aşımına uğradı."
         except _OmniHttpError as e:
-            log.error(f"OmniRoute HTTP {e.status}: {e.detail[:200]}")
-            if e.status == 429:
-                return "Yapay zekâ kotası doldu; biraz sonra tekrar dene."
-            if e.status in (401, 403):
-                return "Yapay zekâ kimlik bilgisi geçersiz. OmniRoute oturumunu kontrol et."
-            if e.status == 404:
-                return "Seçili yapay zekâ modeli yok veya kapalı. .env içindeki OMNIROUTE_MODEL değerini değiştir."
-            return f"Yapay zekâ servisi hata verdi ({e.status})."
+            return self._http_error_message(e.status, e.detail)
         except Exception as e:
-            log.error(f"Kritik İletişim Hatası: {e}")
-            return "Sistemsel bir çökme engellendi."
+            # _OmniHttpError kaçarsa veya eski sarmalayıcılar
+            if isinstance(e, _OmniHttpError):
+                return self._http_error_message(e.status, e.detail)
+            detail = str(e)
+            match = re.search(r"\bHTTP\s+(\d{3})\b", detail, flags=re.IGNORECASE)
+            if match:
+                return self._http_error_message(int(match.group(1)), detail)
+            log.error(f"Kritik İletişim Hatası: {e}", exc_info=True)
+            return f"Bir hata oluştu: {detail[:160]}"
+
+    @staticmethod
+    def _http_error_message(status: int, detail: str) -> str:
+        text = (detail or "").lower()
+        log.error(f"OmniRoute HTTP {status}: {(detail or '')[:200]}")
+        if status == 429:
+            return "Yapay zekâ kotası doldu; biraz sonra tekrar dene."
+        if status in (401, 403):
+            return (
+                "OmniRoute'da yapay zekâ sağlayıcı oturumu yok. "
+                "OmniRoute penceresini aç → Antigravity veya Google ile giriş yap → "
+                "sonra RIFKI'yi yeniden dene. "
+                "(.env içindeki OMNIROUTE_MODEL şu an: antigravity/... olabilir)"
+            )
+        if status == 404:
+            return "Seçili yapay zekâ modeli yok veya kapalı. .env içindeki OMNIROUTE_MODEL değerini değiştir."
+        return f"Yapay zekâ servisi hata verdi ({status})."
 
     def _complete(self, messages, use_tools: bool) -> dict:
         headers = {"Content-Type": "application/json"}
@@ -248,8 +265,8 @@ class _ToolsUnsupported(Exception):
 class _OmniHttpError(Exception):
     def __init__(self, status: int, detail: str):
         self.status = status
-        self.detail = detail
-        super().__init__(f"HTTP {status}")
+        self.detail = detail or ""
+        super().__init__(f"HTTP {status}: {self.detail[:180]}")
 
 
 rifki_brain = OmniRouteAI()

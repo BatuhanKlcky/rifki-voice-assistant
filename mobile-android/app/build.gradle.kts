@@ -13,14 +13,14 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.rifki.mobile"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.rifki.assistant"
         minSdk = 24
-        targetSdk = 35
-        versionCode = 210
-        versionName = "2.1.0"
+        targetSdk = 36
+        versionCode = 220
+        versionName = "2.1.3"
     }
 
     signingConfigs {

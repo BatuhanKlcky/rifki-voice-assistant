@@ -31,13 +31,12 @@ class Settings:
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
     # --- Ses ---
-    WAKE_WORD: str = os.getenv("WAKE_WORD", "jarvis").lower()
+    # .lower() Türkçe İ için locale'e bağlı bozulabilir; wake_word ayrıca normalize eder.
+    # ASCII varsayılan — .env encoding bozulsa bile wake_word normalize eder
+    WAKE_WORD: str = (os.getenv("WAKE_WORD", "rifki") or "rifki").strip()
     STT_LANGUAGE: str = os.getenv("STT_LANGUAGE", "tr-TR")
-    # Uyandırma kelimesi ("Jarvis") İngilizce telaffuzlu bir kelime olduğu için,
-    # Türkçe tanıma motoru bunu çoğu zaman yanlış anlıyor (ör. "Alo Care").
-    # Bu yüzden SADECE wake-word aşamasında ayrı bir dil kullanılabilir;
-    # normal komutlar yine STT_LANGUAGE (Türkçe) ile tanınmaya devam eder.
-    WAKE_WORD_LANGUAGE: str = os.getenv("WAKE_WORD_LANGUAGE", "en-US")
+    # Rıfkı için tr-TR; wake_word.py en-US alternatiflerini de dener.
+    WAKE_WORD_LANGUAGE: str = os.getenv("WAKE_WORD_LANGUAGE", "tr-TR")
     # TTS_ENGINE: "edge" (varsayılan, ücretsiz nöral ses, önerilen),
     # "piper" (tamamen yerel/offline, farklı sesler), "gtts" (Google, orta
     # kalite) veya "pyttsx3" (offline, robotik).
@@ -56,6 +55,11 @@ class Settings:
 
     # --- Log ---
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
+
+    # --- Güncelleme (GitHub Releases) ---
+    AUTO_UPDATE: bool = os.getenv("RIFKI_AUTO_UPDATE", "true").lower() in (
+        "1", "true", "yes", "on",
+    )
 
     # --- Mobil köprü (telefon PWA) ---
     # Token boşsa köprü açılmaz. Dışarıdan erişim için Cloudflare Tunnel kullan.

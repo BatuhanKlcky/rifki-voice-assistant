@@ -3,17 +3,19 @@ package com.rifki.mobile
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.os.Bundle
-import android.view.Menu
-import android.view.MenuItem
+import android.view.View
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.ImageButton
 import android.widget.ProgressBar
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.PopupMenu
 
 class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
@@ -28,11 +30,10 @@ class MainActivity : AppCompatActivity() {
             return
         }
         setContentView(R.layout.activity_main)
-        setSupportActionBar(findViewById(R.id.toolbar))
-        supportActionBar?.title = getString(R.string.app_name)
 
         webView = findViewById(R.id.webView)
         progress = findViewById(R.id.progress)
+        webView.setBackgroundColor(Color.parseColor("#0A1218"))
 
         val settings = webView.settings
         settings.javaScriptEnabled = true
@@ -44,7 +45,7 @@ class MainActivity : AppCompatActivity() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 progress.progress = newProgress
                 progress.visibility =
-                    if (newProgress in 1..99) ProgressBar.VISIBLE else ProgressBar.GONE
+                    if (newProgress in 1..99) View.VISIBLE else View.GONE
             }
         }
         webView.webViewClient = object : WebViewClient() {
@@ -54,12 +55,19 @@ class MainActivity : AppCompatActivity() {
             ): Boolean = false
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                progress.visibility = ProgressBar.VISIBLE
+                progress.visibility = View.VISIBLE
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
-                progress.visibility = ProgressBar.GONE
+                progress.visibility = View.GONE
             }
+        }
+
+        findViewById<ImageButton>(R.id.btnMenu).setOnClickListener { anchor ->
+            val popup = PopupMenu(this, anchor)
+            popup.menuInflater.inflate(R.menu.main_menu, popup.menu)
+            popup.setOnMenuItemClickListener { item -> handleMenu(item.itemId) }
+            popup.show()
         }
 
         loadBridge()
@@ -75,13 +83,8 @@ class MainActivity : AppCompatActivity() {
         webView.loadUrl(page)
     }
 
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.main_menu, menu)
-        return true
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
+    private fun handleMenu(id: Int): Boolean {
+        return when (id) {
             R.id.action_reload -> {
                 loadBridge()
                 true
@@ -106,7 +109,7 @@ class MainActivity : AppCompatActivity() {
                     .show()
                 true
             }
-            else -> super.onOptionsItemSelected(item)
+            else -> false
         }
     }
 

@@ -67,8 +67,10 @@ def api_key_present() -> bool:
 
 
 def needs_first_run() -> bool:
-    # Anahtar yoksa her zaman form; OmniRoute kapalıysa da uyar.
-    return (not api_key_present()) or (not omniroute_reachable())
+    """Yalnızca API anahtarı yoksa form göster.
+    OmniRoute kapalı olsa bile kayıtlı anahtarı tekrar sorma (güncelleme sonrası).
+    """
+    return not api_key_present()
 
 
 def _upsert_env(path: Path, updates: dict[str, str]) -> None:

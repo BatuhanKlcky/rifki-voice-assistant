@@ -315,6 +315,26 @@ def _executable_on_path(name: str):
     return None
 
 
+def list_applications(query: str = "", limit: int = 400) -> list[dict]:
+    """Mobil / API için uygulama kataloğunu (benzersiz adlar) döndürür."""
+    q = fold(query or "")
+    seen: set[str] = set()
+    out: list[dict] = []
+    for entry in load_catalog():
+        key = entry.folded
+        if key in seen:
+            continue
+        if q:
+            tokens = q.split()
+            if q not in key and not key.startswith(q) and not all(tok in key for tok in tokens):
+                continue
+        seen.add(key)
+        out.append({"name": entry.name, "kind": entry.kind})
+    out.sort(key=lambda row: fold(row["name"]))
+    cap = max(1, min(int(limit or 400), 800))
+    return out[:cap]
+
+
 def open_application(name: str) -> str:
     """Yüklü bir uygulamayı adına göre açar."""
     cleaned = (name or "").strip()
