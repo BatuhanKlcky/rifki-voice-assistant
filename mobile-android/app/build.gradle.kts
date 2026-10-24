@@ -19,8 +19,8 @@ android {
         applicationId = "com.rifki.assistant"
         minSdk = 24
         targetSdk = 36
-        versionCode = 220
-        versionName = "2.1.3"
+        versionCode = 230
+        versionName = "2.3.0"
     }
 
     signingConfigs {
