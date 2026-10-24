@@ -193,3 +193,28 @@ def speak(text: str):
         log.error(f"TTS hatası ({settings.TTS_ENGINE}): {e}")
         # Sessiz başarısızlık yerine en azından konsola yaz:
         print(f"[Rıfkı - sesli okunamadı]: {text}")
+
+def synthesize_wav_bytes(text: str) -> bytes:
+    """Metni yerel Piper veya gTTS ile WAV baytlarına dönüştürür (mobil yayın)."""
+    import io
+    import wave
+    clean = (text or "").strip()
+    if not clean:
+        return b""
+    try:
+        voice = _get_piper_voice()
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as wav_file:
+            voice.synthesize_wav(clean, wav_file)
+        return buf.getvalue()
+    except Exception as e:
+        log.warning(f"Piper wav sentez hatası ({e}), gTTS deneniyor...")
+        try:
+            from gtts import gTTS
+            buf = io.BytesIO()
+            tts = gTTS(text=clean, lang="tr", slow=False)
+            tts.write_to_fp(buf)
+            return buf.getvalue()
+        except Exception as err:
+            log.error(f"TTS genel ses dönüştürme hatası: {err}")
+            return b""

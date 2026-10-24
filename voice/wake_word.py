@@ -87,6 +87,11 @@ def matches_wake_word(text: str) -> bool:
     if any(a in heard for a in _RIFKI_ALIASES):
         return True
 
+    # Sessiz harf analizi: r-f-k veya r-z-k iceren her seslenis
+    cons = "".join(c for c in heard if c in "bcdfghjklmnprstvyz")
+    if "rfk" in cons or "rzk" in cons:
+        return True
+
     # Tek token: Rıfkı / rıf / rifk...
     for token in heard.replace(",", " ").replace(".", " ").split():
         t = _compact(token)

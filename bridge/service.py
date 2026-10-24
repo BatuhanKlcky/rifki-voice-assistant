@@ -189,6 +189,7 @@ class MobileBridge:
         app.router.add_post("/api/remote", self._handle_remote)
         app.router.add_get("/api/volume", self._handle_volume)
         app.router.add_get("/api/telemetry", self._handle_telemetry)
+        app.router.add_get("/api/tts", self._handle_tts)
         app.router.add_get("/ws", self._handle_ws)
         static = _static_dir()
         if static.is_dir():
@@ -377,6 +378,30 @@ class MobileBridge:
             if reply:
                 self.publish_assistant(reply)
         return web.json_response(result)
+
+    async def _handle_tts(self, request):
+        from aiohttp import web
+
+        if not self._token_ok(request):
+            return web.Response(text="yetkisiz", status=401)
+        text = (request.rel_url.query.get("text") or "").strip()
+        if not text:
+            return web.Response(text="boş metin", status=400)
+
+        from voice.text_to_speech import synthesize_wav_bytes
+        loop = asyncio.get_running_loop()
+        try:
+            data = await loop.run_in_executor(None, lambda: synthesize_wav_bytes(text))
+            if not data:
+                return web.Response(text="ses üretilemedi", status=500)
+            return web.Response(
+                body=data,
+                content_type="audio/wav",
+                headers={"Cache-Control": "public, max-age=120"},
+            )
+        except Exception as e:
+            log.error(f"TTS endpoint hatası: {e}")
+            return web.Response(text=str(e), status=500)
 
     async def _handle_telemetry(self, request):
         from aiohttp import web

@@ -352,6 +352,62 @@
     }
   }
 
+  let activeAudio = null;
+  function playPhoneAudio(text) {
+    if (!ttsEnabled || !text || !token) return;
+
+    setBadge("SPEAKING");
+    if (activeAudio) {
+      try { activeAudio.pause(); } catch (_) {}
+    }
+
+    const audioUrl = `/api/tts?token=${encodeURIComponent(token)}&text=${encodeURIComponent(text)}&t=${Date.now()}`;
+    const audio = new Audio(audioUrl);
+    activeAudio = audio;
+
+    audio.onended = () => {
+      setBadge("IDLE");
+      activeAudio = null;
+    };
+    audio.onerror = () => {
+      setBadge("IDLE");
+      activeAudio = null;
+      if ("speechSynthesis" in window) {
+        try {
+          window.speechSynthesis.cancel();
+          const u = new SpeechSynthesisUtterance(text);
+          u.lang = "tr-TR";
+          u.onstart = () => setBadge("SPEAKING");
+          u.onend = () => setBadge("IDLE");
+          window.speechSynthesis.speak(u);
+        } catch (_) {}
+      }
+    };
+
+    audio.play().catch(() => {
+      if ("speechSynthesis" in window) {
+        try {
+          window.speechSynthesis.cancel();
+          const u = new SpeechSynthesisUtterance(text);
+          u.lang = "tr-TR";
+          u.onstart = () => setBadge("SPEAKING");
+          u.onend = () => setBadge("IDLE");
+          window.speechSynthesis.speak(u);
+        } catch (_) {}
+      }
+    });
+  }
+
+  // Unlock mobile browser audio context on first touch/click
+  const unlockAudio = () => {
+    try {
+      const silent = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA");
+      silent.play().catch(() => {});
+    } catch (_) {}
+  };
+  window.addEventListener("touchstart", unlockAudio, { once: true, passive: true });
+  window.addEventListener("click", unlockAudio, { once: true, passive: true });
+
   function appendMsg(role, text) {
     if (!text || !logEl) return;
     const div = document.createElement("div");
@@ -380,15 +436,8 @@
     logEl.appendChild(div);
     logEl.scrollTop = logEl.scrollHeight;
 
-    // Speech synthesis playback on mobile if assistant
-    if (role === "assistant" && ttsEnabled && "speechSynthesis" in window) {
-      try {
-        window.speechSynthesis.cancel();
-        const utter = new SpeechSynthesisUtterance(text);
-        utter.lang = "tr-TR";
-        utter.rate = 1.05;
-        window.speechSynthesis.speak(utter);
-      } catch (_) {}
+    if (role === "assistant") {
+      playPhoneAudio(text);
     }
   }
 
