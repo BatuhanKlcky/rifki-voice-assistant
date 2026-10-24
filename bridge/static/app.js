@@ -353,51 +353,73 @@
   }
 
   let activeAudio = null;
+  let lastSpokenText = "";
+  let lastSpokenTime = 0;
+  function fallbackSpeechSynthesis(text) {
+    if (!("speechSynthesis" in window) || !ttsEnabled) return;
+    try {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "tr-TR";
+      u.onstart = () => setBadge("SPEAKING");
+      u.onend = () => setBadge("IDLE");
+      u.onerror = () => setBadge("IDLE");
+      window.speechSynthesis.speak(u);
+    } catch (_) {}
+  }
   function playPhoneAudio(text) {
     if (!ttsEnabled || !text || !token) return;
-
-    setBadge("SPEAKING");
-    if (activeAudio) {
-      try { activeAudio.pause(); } catch (_) {}
+    const clean = text.trim();
+    if (!clean) return;
+    const now = Date.now();
+    // 8 saniye i?inde ayn? metnin tekrar oynat?lmas?n? (HTTP + WebSocket ?ift tetikleme) engelle
+    if (lastSpokenText === clean && now - lastSpokenTime < 8000) {
+      return;
     }
-
-    const audioUrl = `/api/tts?token=${encodeURIComponent(token)}&text=${encodeURIComponent(text)}&t=${Date.now()}`;
+    lastSpokenText = clean;
+    lastSpokenTime = now;
+    // ?nceki ses/konu?may? temiz durdur (ghost eventleri engellemek i?in callbackleri s?f?rla)
+    if (activeAudio) {
+      try {
+        activeAudio.onended = null;
+        activeAudio.onerror = null;
+        activeAudio.pause();
+        activeAudio.src = "";
+      } catch (_) {}
+      activeAudio = null;
+    }
+    if ("speechSynthesis" in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch (_) {}
+    }
+    setBadge("SPEAKING");
+    const audioUrl = /api/tts?token=&text=&t=;
     const audio = new Audio(audioUrl);
     activeAudio = audio;
-
     audio.onended = () => {
-      setBadge("IDLE");
-      activeAudio = null;
+      if (activeAudio === audio) {
+        setBadge("IDLE");
+        activeAudio = null;
+      }
     };
     audio.onerror = () => {
+      if (activeAudio !== audio || !audio.src) return;
       setBadge("IDLE");
       activeAudio = null;
-      if ("speechSynthesis" in window) {
-        try {
-          window.speechSynthesis.cancel();
-          const u = new SpeechSynthesisUtterance(text);
-          u.lang = "tr-TR";
-          u.onstart = () => setBadge("SPEAKING");
-          u.onend = () => setBadge("IDLE");
-          window.speechSynthesis.speak(u);
-        } catch (_) {}
-      }
+      fallbackSpeechSynthesis(clean);
     };
-
-    audio.play().catch(() => {
-      if ("speechSynthesis" in window) {
-        try {
-          window.speechSynthesis.cancel();
-          const u = new SpeechSynthesisUtterance(text);
-          u.lang = "tr-TR";
-          u.onstart = () => setBadge("SPEAKING");
-          u.onend = () => setBadge("IDLE");
-          window.speechSynthesis.speak(u);
-        } catch (_) {}
+    audio.play().catch((err) => {
+      // AbortError biz pause() etti?imizde olu?ur, asla fallback tetiklememeli
+      if (err && err.name === "AbortError") {
+        return;
       }
+      if (activeAudio !== audio) return;
+      setBadge("IDLE");
+      activeAudio = null;
+      fallbackSpeechSynthesis(clean);
     });
   }
-
   // Unlock mobile browser audio context on first touch/click
   const unlockAudio = () => {
     try {
@@ -407,10 +429,21 @@
   };
   window.addEventListener("touchstart", unlockAudio, { once: true, passive: true });
   window.addEventListener("click", unlockAudio, { once: true, passive: true });
-
+  const recentMessages = [];
+  function isDuplicateMessage(role, text) {
+    const now = Date.now();
+    while (recentMessages.length && now - recentMessages[0].time > 8000) {
+      recentMessages.shift();
+    }
+    const isDup = recentMessages.some((m) => m.role === role && m.text === text);
+    if (!isDup) {
+      recentMessages.push({ role, text, time: now });
+    }
+    return isDup;
+  }
   function appendMsg(role, text) {
     if (!text || !logEl) return;
-    const div = document.createElement("div");
+    if (isDuplicateMessage(role, text)) return;
     div.className = "msg " + role;
 
     const head = document.createElement("div");
