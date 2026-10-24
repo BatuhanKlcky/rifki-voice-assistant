@@ -1,11 +1,14 @@
 package com.rifki.mobile
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.os.Bundle
 import android.view.View
+import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -16,6 +19,8 @@ import android.widget.ProgressBar
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.PopupMenu
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 
 class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
@@ -33,19 +38,37 @@ class MainActivity : AppCompatActivity() {
 
         webView = findViewById(R.id.webView)
         progress = findViewById(R.id.progress)
-        webView.setBackgroundColor(Color.parseColor("#0A1218"))
+        webView.setBackgroundColor(Color.parseColor("#02060C"))
+
+        // Request Audio Permission for Voice Input in Web Panel
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.RECORD_AUDIO),
+                101
+            )
+        }
 
         val settings = webView.settings
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
         settings.cacheMode = WebSettings.LOAD_DEFAULT
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+        settings.mediaPlaybackRequiresUserGesture = false
 
         webView.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 progress.progress = newProgress
                 progress.visibility =
                     if (newProgress in 1..99) View.VISIBLE else View.GONE
+            }
+
+            override fun onPermissionRequest(request: PermissionRequest?) {
+                runOnUiThread {
+                    request?.grant(request.resources)
+                }
             }
         }
         webView.webViewClient = object : WebViewClient() {
@@ -98,11 +121,8 @@ class MainActivity : AppCompatActivity() {
                     .setTitle(R.string.unpair_title)
                     .setMessage(R.string.unpair_msg)
                     .setPositiveButton(R.string.unpair) { _, _ ->
-                        Prefs.clearPairing(this)
-                        startActivity(
-                            Intent(this, OnboardingActivity::class.java)
-                                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
-                        )
+                        Prefs.clearPairing(this@MainActivity)
+                        startActivity(Intent(this@MainActivity, OnboardingActivity::class.java))
                         finish()
                     }
                     .setNegativeButton(android.R.string.cancel, null)
@@ -113,8 +133,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (webView.canGoBack()) webView.goBack() else super.onBackPressed()
+        if (webView.canGoBack()) {
+            webView.goBack()
+        } else {
+            super.onBackPressed()
+        }
     }
 }

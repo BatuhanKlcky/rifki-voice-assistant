@@ -275,3 +275,145 @@ def cancel_shutdown() -> str:
     except Exception as e:
         log.error(f"Kapatma iptal hatası: {e}")
         return "Kapatma iptal edilemedi."
+
+def get_telemetry_dict() -> dict:
+    """Canlı sistem telemetrisi (CPU, RAM, Disk, Pil, Saat)."""
+    try:
+        import psutil
+        cpu = psutil.cpu_percent(interval=None)
+        ram = psutil.virtual_memory().percent
+        disk_path = "C:\\" if os.name == "nt" else "/"
+        disk = psutil.disk_usage(disk_path).percent
+        battery = None
+        try:
+            b = psutil.sensors_battery()
+            if b is not None:
+                battery = {"percent": int(b.percent), "plugged": bool(b.power_plugged)}
+        except Exception:
+            pass
+
+        return {
+            "cpu": round(float(cpu), 1),
+            "ram": round(float(ram), 1),
+            "disk": round(float(disk), 1),
+            "battery": battery,
+            "time": datetime.datetime.now().strftime("%H:%M:%S"),
+        }
+    except Exception as e:
+        log.error(f"Telemetri okuma hatası: {e}")
+        return {"cpu": 0.0, "ram": 0.0, "disk": 0.0, "battery": None, "error": str(e)}
+
+
+def turn_off_display() -> str:
+    """Monitörü enerji tasarrufu/uyku moduna alır (ekranı karartır)."""
+    try:
+        if platform.system() == "Windows":
+            import ctypes
+            # HWND_BROADCAST = 0xFFFF, WM_SYSCOMMAND = 0x0112, SC_MONITORPOWER = 0xF170, 2 = power off
+            ctypes.windll.user32.SendMessageW(0xFFFF, 0x0112, 0xF170, 2)
+            return "PC monitörü kapatıldı."
+        return "Monitör kapatma bu sistemde desteklenmiyor."
+    except Exception as e:
+        log.error(f"Monitör kapatma hatası: {e}")
+        return f"Monitör kapatılamadı: {e}"
+
+
+def open_special_folder(folder_name: str) -> str:
+    """Özel sistem klasörlerini Dosya Gezgini'nde açar."""
+    try:
+        name = (folder_name or "").lower().strip()
+        user_home = Path.home()
+        mapping = {
+            "downloads": user_home / "Downloads",
+            "indirilenler": user_home / "Downloads",
+            "documents": user_home / "Documents",
+            "belgeler": user_home / "Documents",
+            "desktop": user_home / "Desktop",
+            "masaustu": user_home / "Desktop",
+            "pictures": user_home / "Pictures",
+            "resimler": user_home / "Pictures",
+            "music": user_home / "Music",
+            "muzik": user_home / "Music",
+            "home": user_home,
+        }
+        target = mapping.get(name)
+        if target is None:
+            p = Path(folder_name)
+            if p.is_dir():
+                target = p
+        if target and target.is_dir():
+            if platform.system() == "Windows":
+                os.startfile(str(target))
+            else:
+                subprocess.Popen(["xdg-open", str(target)])
+            return f"{folder_name.capitalize()} klasörü açıldı."
+        return f"Klasör bulunamadı: {folder_name}"
+    except Exception as e:
+        log.error(f"Klasör açma hatası: {e}")
+        return f"Klasör açılamadı: {e}"
+
+
+def set_clipboard_text(text: str) -> str:
+    """Metni PC panosuna kopyalar."""
+    try:
+        import pyperclip
+        pyperclip.copy(text)
+        return "Metin PC panosuna kopyalandı."
+    except Exception as e:
+        log.error(f"Pano yazma hatası: {e}")
+        return f"Panoya kopyalanamadı: {e}"
+
+
+def get_clipboard_text() -> str:
+    """PC panosundaki metni döndürür."""
+    try:
+        import pyperclip
+        return pyperclip.paste() or ""
+    except Exception as e:
+        log.error(f"Pano okuma hatası: {e}")
+        return ""
+
+
+def send_key_stroke(key: str) -> str:
+    """Önemli klavye tuşlarını veya kombinasyonlarını tetikler."""
+    try:
+        import pyautogui
+        k = (key or "").lower().strip()
+        valid_keys = {
+            "enter": "enter",
+            "esc": "esc",
+            "escape": "esc",
+            "space": "space",
+            "backspace": "backspace",
+            "tab": "tab",
+            "win": "win",
+            "windows": "win",
+            "up": "up",
+            "down": "down",
+            "left": "left",
+            "right": "right",
+        }
+        if k in valid_keys:
+            pyautogui.press(valid_keys[k])
+            return f"Tuş iletildi: {k}"
+        elif k in ("alt_tab", "alttab"):
+            pyautogui.hotkey("alt", "tab")
+            return "Alt+Tab uygulandı."
+        elif k in ("win_d", "wind"):
+            pyautogui.hotkey("win", "d")
+            return "Masaüstünü göster (Win+D) uygulandı."
+        return f"Bilinmeyen tuş: {key}"
+    except Exception as e:
+        log.error(f"Tuş iletme hatası: {e}")
+        return f"Tuş iletilemedi: {e}"
+
+
+def type_text_to_pc(text: str) -> str:
+    """Metni PC'de aktif olan pencereye harf harf yazar."""
+    try:
+        import pyautogui
+        pyautogui.write(text, interval=0.01)
+        return "Metin PC'ye yazdırıldı."
+    except Exception as e:
+        log.error(f"Metin yazdırma hatası: {e}")
+        return f"Metin yazılamadı: {e}"

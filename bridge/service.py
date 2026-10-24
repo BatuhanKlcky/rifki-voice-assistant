@@ -188,6 +188,7 @@ class MobileBridge:
         app.router.add_post("/api/apps/launch", self._handle_apps_launch)
         app.router.add_post("/api/remote", self._handle_remote)
         app.router.add_get("/api/volume", self._handle_volume)
+        app.router.add_get("/api/telemetry", self._handle_telemetry)
         app.router.add_get("/ws", self._handle_ws)
         static = _static_dir()
         if static.is_dir():
@@ -376,6 +377,20 @@ class MobileBridge:
             if reply:
                 self.publish_assistant(reply)
         return web.json_response(result)
+
+    async def _handle_telemetry(self, request):
+        from aiohttp import web
+
+        if not self._token_ok(request):
+            return web.json_response({"error": "yetkisiz"}, status=401)
+        from tools import system
+
+        loop = asyncio.get_running_loop()
+        try:
+            data = await loop.run_in_executor(None, system.get_telemetry_dict)
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+        return web.json_response(data)
 
     async def _handle_apps(self, request):
         from aiohttp import web

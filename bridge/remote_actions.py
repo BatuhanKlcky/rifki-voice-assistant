@@ -1,7 +1,7 @@
 """
 bridge/remote_actions.py
 ------------------------
-Mobil uzaktan kontrol aksiyonları (ses, medya, kilit, güç, URL).
+Mobil uzaktan kontrol aksiyonları (ses, medya, kilit, güç, URL, telemetri, pano, klavye).
 """
 
 from __future__ import annotations
@@ -48,6 +48,7 @@ def run_remote_action(action: str, body: dict | None = None) -> dict[str, Any]:
 def _dispatch(action: str, body: dict) -> tuple[str, dict]:
     from tools import browser, media, system
 
+    # Ses kontrolleri
     if action == "volume_up":
         reply = system.adjust_volume(int(body.get("delta") or 10))
         return reply, {"volume": system.get_volume_info()}
@@ -71,6 +72,7 @@ def _dispatch(action: str, body: dict) -> tuple[str, dict]:
         reply = f"Ses %{level}" + (" (sessiz)" if muted else "")
         return reply, {"volume": info}
 
+    # Medya kontrolleri
     if action == "media_play_pause":
         return media.media_play_pause(), {}
     if action == "media_next":
@@ -80,6 +82,7 @@ def _dispatch(action: str, body: dict) -> tuple[str, dict]:
     if action == "media_stop":
         return media.media_stop(), {}
 
+    # Güç ve Ekran
     if action == "lock":
         return system.lock_screen(), {}
     if action == "sleep":
@@ -90,6 +93,43 @@ def _dispatch(action: str, body: dict) -> tuple[str, dict]:
         return system.restart_computer(), {}
     if action == "cancel_shutdown":
         return system.cancel_shutdown(), {}
+    if action in ("display_off", "turn_off_display", "screen_off"):
+        return system.turn_off_display(), {}
+
+    # Canlı Telemetri
+    if action in ("telemetry", "system_status"):
+        data = system.get_telemetry_dict()
+        reply = f"CPU: %{data.get('cpu')} | RAM: %{data.get('ram')} | Disk: %{data.get('disk')}"
+        return reply, {"telemetry": data}
+
+    # Klasör açma
+    if action == "open_folder":
+        folder = body.get("folder") or "downloads"
+        return system.open_special_folder(folder), {}
+
+    # Pano (Clipboard)
+    if action == "set_clipboard":
+        text = str(body.get("text") or "")
+        return system.set_clipboard_text(text), {}
+    if action == "get_clipboard":
+        clip = system.get_clipboard_text()
+        return f"Panodaki metin alındı ({len(clip)} karakter).", {"clipboard": clip}
+
+    # Klavye tuşları & Metin yazma
+    if action == "press_key":
+        key = str(body.get("key") or "")
+        return system.send_key_stroke(key), {}
+    if action == "type_text":
+        text = str(body.get("text") or "")
+        return system.type_text_to_pc(text), {}
+
+    # Arama ve URL
+    if action == "search_google":
+        q = (body.get("query") or "").strip()
+        return browser.open_google_search(q), {}
+    if action == "search_youtube":
+        q = (body.get("query") or "").strip()
+        return browser.open_youtube_search(q), {}
 
     if action == "open_url":
         url = (body.get("url") or "").strip()
