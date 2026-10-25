@@ -26,7 +26,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 SetupLogging=yes
 UninstallDisplayIcon={app}\{#MyAppExeName}
 SetupIconFile=..\assets\rifki.ico
-VersionInfoVersion=2.3.0.0
+VersionInfoVersion=2.4.0.0
 VersionInfoProductName=RIFKI
 
 [Languages]
