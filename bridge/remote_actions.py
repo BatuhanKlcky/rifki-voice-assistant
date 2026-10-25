@@ -154,11 +154,11 @@ def _dispatch(action: str, body: dict) -> tuple[str, dict]:
     # Masaüstü, Pencere ve Sekme Otomasyonu
     if action == "control_window":
         from tools import desktop_automation
-        param = body.get("action") or "show_desktop"
+        param = body.get("cmd") or body.get("param") or "show_desktop"
         return desktop_automation.control_active_window(param), {}
     if action == "browser_tab":
         from tools import desktop_automation
-        param = body.get("action") or "new_tab"
+        param = body.get("cmd") or body.get("param") or "new_tab"
         return desktop_automation.browser_tab_action(param), {}
     if action == "organize_folder":
         from tools import desktop_automation
