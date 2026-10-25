@@ -122,7 +122,16 @@ class OmniRouteAI:
             if status_callback:
                 status_callback("THINKING")
 
-            messages = [{"role": "system", "content": self.system_prompt}]
+            system_content = self.system_prompt
+            try:
+                from core.memory import long_term_memory
+                known = long_term_memory.get_known_facts_summary(limit=10)
+                if known:
+                    system_content += f"\n\nKullanıcı hakkında hafızandaki bilgiler:\n{known}"
+            except Exception:
+                pass
+
+            messages = [{"role": "system", "content": system_content}]
             messages.extend(self._history)
             messages.append({"role": "user", "content": prompt})
 

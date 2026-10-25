@@ -142,4 +142,13 @@ def _dispatch(action: str, body: dict) -> tuple[str, dict]:
             raise ValueError("yalnızca http/https")
         return browser.open_url(url), {}
 
+    # Wake-on-LAN
+    if action == "wol_info":
+        from tools import wake_on_lan
+        return wake_on_lan.get_wake_on_lan_info(), {}
+    if action == "wake_device":
+        from tools import wake_on_lan
+        target = body.get("target") or "pc"
+        return wake_on_lan.wake_device(target), {}
+
     raise ValueError(f"bilinmeyen aksiyon: {action}")

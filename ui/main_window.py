@@ -35,6 +35,8 @@ from core.updater import ReleaseInfo, check_for_update, download_setup, launch_i
 from core.version import APP_VERSION
 from ui.first_run import maybe_show_first_run
 from ui.mobile_pairing import MobilePairingWindow
+from ui.spotlight import SpotlightWindow
+from ui.hotkey_manager import GlobalHotkeyManager
 from voice.wake_word import wait_for_wake_word, matches_wake_word
 from voice.speech_to_text import listen_and_transcribe, MicrophoneError, SpeechServiceError
 from voice.text_to_speech import speak
@@ -439,6 +441,11 @@ class MainWindow(QWidget):
         self._pending_release: Optional[ReleaseInfo] = None
         self._update_worker: Optional[UpdateWorker] = None
         self._update_action = None
+        self._spotlight_window = SpotlightWindow(None)
+        self._spotlight_window.command_executed.connect(self._on_spotlight_command_executed)
+        self._hotkey_manager = GlobalHotkeyManager(self)
+        self._hotkey_manager.spotlight_triggered.connect(self.toggle_spotlight)
+        self._hotkey_started = False
         # Mobil QR açıkken HUD tıklamayı yutmasın (pencere camın arkasında kalabiliyor)
         self._pairing_mouse_passthrough = False
         ensure_bridge_token()
@@ -494,6 +501,9 @@ class MainWindow(QWidget):
         self._update_action.triggered.connect(self._manual_update_check)
         menu.addAction(show_action)
         menu.addAction(hide_action)
+        spotlight_action = QAction("Hızlı Komut Çubuğu (Ctrl+Space)", self)
+        spotlight_action.triggered.connect(self.toggle_spotlight)
+        menu.addAction(spotlight_action)
         menu.addAction(mobile_action)
         menu.addSeparator()
         menu.addAction(self._update_action)
@@ -687,6 +697,9 @@ class MainWindow(QWidget):
         if not self._listening_autostarted:
             self._listening_autostarted = True
             QTimer.singleShot(400, self._arm_listening)
+        if hasattr(self, "_hotkey_manager") and not getattr(self, "_hotkey_started", False):
+            self._hotkey_started = True
+            self._hotkey_manager.start(int(self.winId()))
 
     def hideEvent(self, event):
         super().hideEvent(event)
@@ -723,11 +736,29 @@ class MainWindow(QWidget):
         )
 
     def _quit_app(self):
+        if hasattr(self, "_hotkey_manager"):
+            self._hotkey_manager.stop()
+        if hasattr(self, "_spotlight_window") and self._spotlight_window is not None:
+            self._spotlight_window.close()
         tunnel_manager.stop()
         mobile_bridge.stop()
         self.voice_worker.stop()
         self.voice_worker.wait(2000)
         QApplication.quit()
+
+    def toggle_spotlight(self):
+        if not hasattr(self, "_spotlight_window") or self._spotlight_window is None:
+            return
+        if self._spotlight_window.isVisible():
+            self._spotlight_window.hide()
+        else:
+            self._spotlight_window.show_spotlight()
+
+    def _on_spotlight_command_executed(self, text: str, reply: str):
+        self.on_user_message(text)
+        self.on_assistant_message(reply)
+        mobile_bridge.publish_user(text)
+        mobile_bridge.publish_assistant(reply)
 
     def _handle_mobile_command(self, text: str) -> str:
         """Telefondan gelen komut. aiohttp thread pool'undan çağrılır."""
@@ -1114,6 +1145,16 @@ class MainWindow(QWidget):
             "color: #4E7084; font-family: Consolas; font-size: 10px; letter-spacing: 1px; background: transparent;"
         )
         action.addStretch()
+        self.btn_spotlight = QPushButton("HIZLI KOMUT (Ctrl+Space)")
+        self.btn_spotlight.setCursor(Qt.PointingHandCursor)
+        self.btn_spotlight.setStyleSheet(
+            "QPushButton { background-color: rgba(6, 22, 36, 200); color: #00E5FF; "
+            "border: 1px solid #1C3854; padding: 6px 14px; font-family: Consolas; "
+            "font-size: 11px; font-weight: bold; letter-spacing: 1px; border-radius: 4px; }"
+            "QPushButton:hover { background-color: rgba(14, 42, 68, 220); border-color: #00E5FF; }"
+        )
+        self.btn_spotlight.clicked.connect(self.toggle_spotlight)
+        action.addWidget(self.btn_spotlight)
         action.addWidget(self.toggle_button)
         action.addWidget(serial)
         bottom.addLayout(action)

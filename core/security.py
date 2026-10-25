@@ -25,6 +25,7 @@ CRITICAL_ACTIONS = {
     "shutdown_computer",
     "restart_computer",
     "delete_file",
+    "empty_recycle_bin",
     "delete_folder",
     "bulk_modify_files",
     "change_system_settings",

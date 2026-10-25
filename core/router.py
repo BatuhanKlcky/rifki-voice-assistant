@@ -19,7 +19,7 @@ from typing import Callable, Optional
 
 from core.logger import get_logger
 from core.security import is_critical, confirm
-from tools import applications, browser, filesystem, system, web, notifications, media
+from tools import applications, browser, filesystem, system, web, notifications, media, wake_on_lan, desktop_automation
 from tools import memory_tool
 
 log = get_logger("router")
@@ -202,11 +202,20 @@ TOOL_SCHEMAS = [
         },
     },
     {
-        "name": "play_media",
-        "description": "Müzik/video çalmayı dener (NOT: bu özellik henüz tam çalışmıyor).",
+        "name": "play_youtube_music",
+        "description": "YouTube Music üzerinde belirtilen şarkıyı, sanatçıyı veya müzik türünü doğrudan bulur ve çalar. 'müzik aç', 'şarkı çal', 'youtube music' gibi isteklerde kullanılır.",
         "input_schema": {
             "type": "object",
-            "properties": {"query": {"type": "string"}},
+            "properties": {"query": {"type": "string", "description": "Şarkı, albüm veya sanatçı adı (örn: 'Daft Punk Get Lucky', 'lofi chill')"}},
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "play_media",
+        "description": "Müzik/şarkı çalar (YouTube Music üzerinden).",
+        "input_schema": {
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "Şarkı veya müzik sorgusu"}},
             "required": ["query"],
         },
     },
@@ -240,6 +249,96 @@ TOOL_SCHEMAS = [
             "required": ["key"],
         },
     },
+    {
+        "name": "search_memories",
+        "description": "Hafızadaki tüm kaydedilmiş bilgi ve notlarda arama yapar. 'benim hakkımda ne biliyorsun', 'şunu hatırlıyor musun' gibi sorularda kullanılır.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "Aranacak kelime veya konu"}},
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "list_all_memories",
+        "description": "Hafızadaki kullanıcıya dair tüm kayıtlı gerçekleri listeler.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "save_note",
+        "description": "Kullanıcının söylediği bir notu veya fikri not defterine kalıcı olarak kaydeder.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Not başlığı"},
+                "content": {"type": "string", "description": "Notun içeriği"},
+                "tags": {"type": "string", "description": "Virgülle ayrılmış etiketler (isteğe bağlı)"}
+            },
+            "required": ["title", "content"],
+        },
+    },
+    {
+        "name": "search_notes",
+        "description": "Kullanıcının kaydettiği notlar arasında arama yapar.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "Aranacak kelime veya konu"}},
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "wake_device",
+        "description": "Ağdaki bir cihazı veya bu bilgisayarı uyandırmak için Wake-on-LAN sihirli paketi (Magic Packet) gönderir.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"target": {"type": "string", "description": "Uyandırılacak cihazın MAC adresi veya 'pc'"}},
+            "required": ["target"],
+        },
+    },
+    {
+        "name": "get_wake_on_lan_info",
+        "description": "Bilgisayarın uzaktan uyandırılması (Wake-on-LAN) için gereken fiziksel MAC adresini ve yerel ağ bilgilerini verir.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "empty_recycle_bin",
+        "description": "Windows Geri Dönüşüm Kutusunu (Çöp Kutusu) tamamen boşaltır.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "organize_folder",
+        "description": "İndirilenler (downloads) veya Masaüstü (desktop) klasöründeki dağınık dosyaları türlerine göre (Resimler, Belgeler, Arşivler, Kurulumlar) alt klasörlere taşır ve düzenler.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"folder_name": {"type": "string", "description": "'downloads' (varsayılan) veya 'desktop'"}},
+        },
+    },
+    {
+        "name": "control_active_window",
+        "description": "Aktif pencereyi kontrol eder. Eylemler: 'show_desktop', 'minimize', 'maximize', 'close', 'fullscreen', 'switch_window'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"action": {"type": "string", "description": "'show_desktop', 'minimize', 'maximize', 'close', 'fullscreen', 'switch_window'"}},
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "browser_tab_action",
+        "description": "Tarayıcı sekmelerini kontrol eder. Eylemler: 'new_tab', 'close_tab', 'reopen_tab', 'refresh'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"action": {"type": "string", "description": "'new_tab', 'close_tab', 'reopen_tab', 'refresh'"}},
+            "required": ["action"],
+        },
+    },
 ]
 
 TOOL_DISPATCH = {
@@ -265,9 +364,20 @@ TOOL_DISPATCH = {
     "send_notification": notifications.send_notification,
     "set_reminder": notifications.set_reminder,
     "play_media": media.play_media,
+    "play_youtube_music": media.play_youtube_music,
     "remember_fact": memory_tool.remember_fact,
     "recall_fact": memory_tool.recall_fact,
     "forget_fact": memory_tool.forget_fact,
+    "search_memories": memory_tool.search_memories,
+    "list_all_memories": memory_tool.list_all_memories,
+    "save_note": memory_tool.save_note,
+    "search_notes": memory_tool.search_notes,
+    "wake_device": wake_on_lan.wake_device,
+    "get_wake_on_lan_info": wake_on_lan.get_wake_on_lan_info,
+    "empty_recycle_bin": desktop_automation.empty_recycle_bin,
+    "organize_folder": desktop_automation.organize_folder,
+    "control_active_window": desktop_automation.control_active_window,
+    "browser_tab_action": desktop_automation.browser_tab_action,
 }
 
 
