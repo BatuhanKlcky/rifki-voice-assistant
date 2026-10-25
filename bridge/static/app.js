@@ -49,6 +49,8 @@
   const urlInput = document.getElementById("urlInput");
   const btnSearchGoogle = document.getElementById("btnSearchGoogle");
   const btnSearchYoutube = document.getElementById("btnSearchYoutube");
+  const ytMusicForm = document.getElementById("ytMusicForm");
+  const ytMusicInput = document.getElementById("ytMusicInput");
 
   // Apps & Vision elements
   const appSearch = document.getElementById("appSearch");
@@ -663,6 +665,17 @@ async function fetchStatus() {
     btnSearchYoutube.addEventListener("click", () => {
       const val = urlInput.value.trim();
       if (val) callRemote("search_youtube", { query: val });
+    });
+  }
+
+  // YouTube Music Form
+  if (ytMusicForm && ytMusicInput) {
+    ytMusicForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const val = ytMusicInput.value.trim();
+      if (!val) return;
+      callRemote("play_youtube_music", { query: val });
+      ytMusicInput.value = "";
     });
   }
 

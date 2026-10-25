@@ -151,4 +151,27 @@ def _dispatch(action: str, body: dict) -> tuple[str, dict]:
         target = body.get("target") or "pc"
         return wake_on_lan.wake_device(target), {}
 
+    # Masaüstü, Pencere ve Sekme Otomasyonu
+    if action == "control_window":
+        from tools import desktop_automation
+        param = body.get("action") or "show_desktop"
+        return desktop_automation.control_active_window(param), {}
+    if action == "browser_tab":
+        from tools import desktop_automation
+        param = body.get("action") or "new_tab"
+        return desktop_automation.browser_tab_action(param), {}
+    if action == "organize_folder":
+        from tools import desktop_automation
+        folder = body.get("folder") or "downloads"
+        return desktop_automation.organize_folder(folder), {}
+    if action == "empty_recycle_bin":
+        from tools import desktop_automation
+        return desktop_automation.empty_recycle_bin(), {}
+
+    # Müzik (YouTube Music)
+    if action == "play_youtube_music":
+        from tools import media
+        q = body.get("query") or "lofi beats"
+        return media.play_youtube_music(q), {}
+
     raise ValueError(f"bilinmeyen aksiyon: {action}")

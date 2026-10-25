@@ -7,14 +7,14 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>RIFKI Siber Kokpit</title>
-  <link rel="stylesheet" href="/static/style.css?v=2.3.4" />
+  <link rel="stylesheet" href="/static/style.css?v=2.4.0" />
 </head>
 <body>
   <!-- Top Cockpit Bar -->
   <header class="top-bar">
     <div class="brand">
       <div class="kicker-row">
-        <span class="brand-tag">SYS.2.3</span>
+        <span class="brand-tag">SYS.2.4</span>
         <span class="brand-sub">NEON HUD</span>
       </div>
       <h1 class="brand-title">RIFKI <span>// SİBER KÖPRÜ</span></h1>
@@ -107,7 +107,9 @@
         <button type="button" class="chip" data-cmd="durum raporu ver">📊 Rapor Ver</button>
         <button type="button" class="chip" data-cmd="ekran görüntüsü al">📸 Ekran Al</button>
         <button type="button" class="chip" data-cmd="sesi yüzde elli yap">🔊 Ses %50</button>
-        <button type="button" class="chip" data-cmd="spotify aç">🎵 Spotify</button>
+        <button type="button" class="chip" data-cmd="hafızandaki notları listele">🧠 Notlarım</button>
+        <button type="button" class="chip" data-cmd="youtube music lofi hip hop çal">🎵 YT Music</button>
+        <button type="button" class="chip" data-cmd="indirilenler klasörünü düzenle">🧹 Düzenle</button>
         <button type="button" class="chip" data-cmd="ekranı kilitle">🔒 Kilitle</button>
       </div>
 
@@ -153,6 +155,70 @@
           <button type="button" class="btn-media" data-action="media_next" title="Sonraki">⏭</button>
           <button type="button" class="btn-media" data-action="media_stop" title="Durdur">⏹</button>
         </div>
+      </div>
+
+      <!-- YouTube Music -->
+      <div class="card">
+        <div class="card-head">
+          <h3>🎵 YouTube Music</h3>
+          <span class="pill">Canlı Akış</span>
+        </div>
+        <form id="ytMusicForm" class="url-form">
+          <input id="ytMusicInput" type="text" placeholder="Şarkı veya sanatçı adı…" autocomplete="off" />
+          <button type="submit" class="btn-sub primary">▶ Çal</button>
+        </form>
+        <div class="btn-row wrap" style="margin-top: 8px;">
+          <button type="button" class="btn-sub" data-action="play_youtube_music" data-param="query:lofi hip hop">☕ Lo-Fi</button>
+          <button type="button" class="btn-sub" data-action="play_youtube_music" data-param="query:synthwave radio">🌆 Synthwave</button>
+          <button type="button" class="btn-sub" data-action="play_youtube_music" data-param="query:turkce rock">🎸 Türkçe Rock</button>
+          <button type="button" class="btn-sub" data-action="play_youtube_music" data-param="query:deep focus work">🎧 Odaklanma</button>
+        </div>
+      </div>
+
+      <!-- Masaüstü & Pencere Yönetimi -->
+      <div class="card">
+        <div class="card-head">
+          <h3>🪟 Pencere & Tarayıcı Kontrolü</h3>
+        </div>
+        <div class="key-grid">
+          <button type="button" class="btn-key" data-action="control_window" data-param="action:show_desktop">💻 Masaüstü</button>
+          <button type="button" class="btn-key" data-action="control_window" data-param="action:fullscreen">⛶ Tam Ekran (F11)</button>
+          <button type="button" class="btn-key" data-action="control_window" data-param="action:maximize">🗖 Büyüt</button>
+          <button type="button" class="btn-key" data-action="control_window" data-param="action:minimize">🗕 Simge Yap</button>
+          <button type="button" class="btn-key" data-action="control_window" data-param="action:close">❌ Kapat (Alt+F4)</button>
+          <button type="button" class="btn-key" data-action="press_key" data-param="key:alt_tab">🔀 Alt+Tab</button>
+        </div>
+        <div class="btn-row wrap" style="margin-top: 8px;">
+          <button type="button" class="btn-sub" data-action="browser_tab" data-param="action:new_tab">➕ Yeni Sekme</button>
+          <button type="button" class="btn-sub" data-action="browser_tab" data-param="action:close_tab">✖ Sekmeyi Kapat</button>
+          <button type="button" class="btn-sub" data-action="browser_tab" data-param="action:refresh">🔄 Yenile</button>
+          <button type="button" class="btn-sub" data-action="browser_tab" data-param="action:next_tab">⏭️ Sekme Değiştir</button>
+        </div>
+      </div>
+
+      <!-- Akıllı Temizlik & Düzenleme -->
+      <div class="card">
+        <div class="card-head">
+          <h3>🧹 Akıllı Düzenleme & Temizlik</h3>
+        </div>
+        <div class="btn-row wrap">
+          <button type="button" class="btn-sub" data-action="organize_folder" data-param="folder:downloads">📂 İndirilenleri Grupla</button>
+          <button type="button" class="btn-sub" data-action="organize_folder" data-param="folder:desktop">🖥️ Masaüstünü Düzenle</button>
+          <button type="button" class="btn-sub danger" data-action="empty_recycle_bin" data-confirm="Geri Dönüşüm Kutusu kalıcı olarak boşaltılsın mı?">🗑️ Çöp Kutusunu Boşalt</button>
+        </div>
+        <div class="card-hint">Dosyalar uzantılarına göre Resim, Belge, Video vb. klasörlere arşivlenir.</div>
+      </div>
+
+      <!-- Ağ & Wake-on-LAN -->
+      <div class="card">
+        <div class="card-head">
+          <h3>⚡ Ağ & Wake-on-LAN (WoL)</h3>
+        </div>
+        <div class="btn-row wrap">
+          <button type="button" class="btn-sub" data-action="wol_info">📡 MAC & Ağ Bilgisi</button>
+          <button type="button" class="btn-sub primary" data-action="wake_device" data-param="target:pc">⚡ Bilgisayarı Uyandır</button>
+        </div>
+        <div class="card-hint">Bilgisayar kapalıyken yerel ağdan Magic Packet sinyali gönderir.</div>
       </div>
 
       <!-- Ekran ve Sistem Güç -->
@@ -308,6 +374,6 @@
     <p class="lightbox-hint">Kapatmak için dokunun</p>
   </div>
 
-  <script src="/static/app.js?v=2.3.4"></script>
+  <script src="/static/app.js?v=2.4.0"></script>
 </body>
 </html>
