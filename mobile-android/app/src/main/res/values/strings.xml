@@ -14,4 +14,8 @@
     <string name="unpair">Bağlantıyı kaldır</string>
     <string name="unpair_title">Bağlantıyı kaldır?</string>
     <string name="unpair_msg">Telefondaki eşleştirme silinir. Tekrar bağlanmak için QR taraman gerekir.</string>
+    <string name="wake_pc">⚡ Bilgisayarı Uyandır (WoL)</string>
+    <string name="pc_offline_title">Bilgisayar Çevrimdışı</string>
+    <string name="pc_offline_desc">PC kapalı veya uyku modunda olabilir.\nTelefondan doğrudan uyandırma sinyali gönderin.</string>
+    <string name="wake_sent">⚡ Uyandırma paketi gönderildi!</string>
 </resources>

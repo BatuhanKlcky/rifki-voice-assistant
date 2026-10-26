@@ -2,13 +2,13 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0A1218">
+    android:background="#02060C">
 
     <WebView
         android:id="@+id/webView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#0A1218" />
+        android:background="#02060C" />
 
     <ProgressBar
         android:id="@+id/progress"
@@ -19,6 +19,63 @@
         android:indeterminate="false"
         android:max="100"
         android:visibility="gone" />
+
+    <!-- Offline Overlay -->
+    <LinearLayout
+        android:id="@+id/offlineLayout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="32dp"
+        android:visibility="gone"
+        android:background="#02060C">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🖥️"
+            android:textSize="56sp" />
+
+        <TextView
+            android:id="@+id/tvOfflineTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/pc_offline_title"
+            android:textColor="#3DF0FF"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvOfflineDesc"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:text="@string/pc_offline_desc"
+            android:textColor="#8AA6B8"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/btnWakePc"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:backgroundTint="#00E5FF"
+            android:text="@string/wake_pc"
+            android:textColor="#02060C"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnRetryConnect"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/reload"
+            android:textColor="#3DF0FF" />
+    </LinearLayout>
 
     <ImageButton
         android:id="@+id/btnMenu"

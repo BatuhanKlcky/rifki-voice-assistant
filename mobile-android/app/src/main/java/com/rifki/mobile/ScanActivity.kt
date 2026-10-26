@@ -95,7 +95,7 @@ class ScanActivity : AppCompatActivity() {
 
     private fun onQr(raw: String) {
         if (!handled.compareAndSet(false, true)) return
-        val pair = Prefs.parsePairUri(raw)
+        val pair = Prefs.parsePairUri(raw, this)
         if (pair == null) {
             handled.set(false)
             runOnUiThread {

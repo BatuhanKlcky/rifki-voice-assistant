@@ -599,6 +599,11 @@ async function fetchStatus() {
         const [k, v] = paramStr.split(":");
         params[k] = isNaN(Number(v)) ? v : Number(v);
       }
+      if (action === "wake_device" && window.AndroidBridge && typeof window.AndroidBridge.wakePc === "function") {
+        window.AndroidBridge.wakePc(params.target || "");
+        appendMsg("assistant", "⚡ Telefondan yerel Wake-on-LAN sihirli paketi fırlatıldı.");
+        return;
+      }
       callRemote(action, params, confirmMsg);
     });
   });

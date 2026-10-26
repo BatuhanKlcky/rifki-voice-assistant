@@ -82,7 +82,13 @@ def lan_bridge_url() -> str:
 
 
 def pair_uri(base_url: str, token: str) -> str:
-    return f"rifki://pair?u={quote(base_url, safe='')}&t={quote(token, safe='')}"
+    try:
+        from tools.wake_on_lan import get_primary_mac_and_ip
+        mac, _ = get_primary_mac_and_ip()
+        m_param = f"&m={quote(mac, safe='')}" if mac else ""
+    except Exception:
+        m_param = ""
+    return f"rifki://pair?u={quote(base_url, safe='')}&t={quote(token, safe='')}{m_param}"
 
 
 def cloudflared_path() -> Optional[Path]:

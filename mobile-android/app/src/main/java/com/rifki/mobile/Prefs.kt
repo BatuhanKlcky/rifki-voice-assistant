@@ -8,6 +8,9 @@ object Prefs {
     private const val KEY_URL = "bridge_url"
     private const val KEY_TOKEN = "bridge_token"
     private const val KEY_ONBOARDED = "onboarded"
+    private const val KEY_MAC = "target_mac"
+
+    const val DEFAULT_MAC = "7C:8A:E1:AA:CA:F4"
 
     fun isPaired(context: Context): Boolean =
         getUrl(context).isNotEmpty() && getToken(context).isNotEmpty()
@@ -29,13 +32,26 @@ object Prefs {
         context.getSharedPreferences(NAME, Context.MODE_PRIVATE)
             .getString(KEY_TOKEN, "")?.trim().orEmpty()
 
-    fun save(context: Context, url: String, token: String) {
+    fun getMac(context: Context): String =
         context.getSharedPreferences(NAME, Context.MODE_PRIVATE)
+            .getString(KEY_MAC, DEFAULT_MAC)?.trim().orEmpty().ifEmpty { DEFAULT_MAC }
+
+    fun setMac(context: Context, mac: String) {
+        if (mac.isBlank()) return
+        context.getSharedPreferences(NAME, Context.MODE_PRIVATE)
+            .edit().putString(KEY_MAC, mac.trim().uppercase()).apply()
+    }
+
+    fun save(context: Context, url: String, token: String, mac: String? = null) {
+        val editor = context.getSharedPreferences(NAME, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_URL, url.trim().trimEnd('/'))
             .putString(KEY_TOKEN, token.trim())
             .putBoolean(KEY_ONBOARDED, true)
-            .apply()
+        if (!mac.isNullOrBlank()) {
+            editor.putString(KEY_MAC, mac.trim().uppercase())
+        }
+        editor.apply()
     }
 
     fun clearPairing(context: Context) {
@@ -54,8 +70,8 @@ object Prefs {
         return "$base$sep" + "token=" + Uri.encode(token)
     }
 
-    /** rifki://pair?u=...&t=... */
-    fun parsePairUri(raw: String): Pair<String, String>? {
+    /** rifki://pair?u=...&t=...&m=... */
+    fun parsePairUri(raw: String, context: Context? = null): Pair<String, String>? {
         val uri = try {
             Uri.parse(raw.trim())
         } catch (_: Exception) {
@@ -63,13 +79,17 @@ object Prefs {
         }
         if (uri.scheme != "rifki") return null
         if (uri.host != "pair" && uri.path != "/pair" && uri.path?.contains("pair") != true) {
-            // rifki://pair?... → host=pair
             if (uri.host != "pair") return null
         }
         val url = uri.getQueryParameter("u")?.trim().orEmpty()
         val token = uri.getQueryParameter("t")?.trim().orEmpty()
+        val mac = uri.getQueryParameter("m")?.trim().orEmpty()
         if (url.isEmpty() || token.isEmpty()) return null
         if (!url.startsWith("http://") && !url.startsWith("https://")) return null
+
+        if (context != null && mac.isNotEmpty()) {
+            setMac(context, mac)
+        }
         return url to token
     }
 }
