@@ -256,6 +256,25 @@ class ConfirmBridge:
 STOP_LISTENING_PHRASES = ("dinlemeyi durdur", "dinlemeyi kapat", "sustur", "sus artık")
 
 
+class VisionWorker(QThread):
+    """Arka planda ekran görüntüsü alıp multimodal yapay zekâ ile analiz eder."""
+
+    analysis_finished = pyqtSignal(str)
+    analysis_failed = pyqtSignal(str)
+
+    def __init__(self, question: str = "Ekrana bak, ekranda ne var ve önemli detayları özetle.", parent=None):
+        super().__init__(parent)
+        self.question = question
+
+    def run(self):
+        try:
+            from tools.vision import analyze_screen
+            res = analyze_screen(self.question)
+            self.analysis_finished.emit(res)
+        except Exception as ex:
+            self.analysis_failed.emit(str(ex))
+
+
 class UpdateWorker(QThread):
     """Arka planda GitHub Releases kontrol / indirme."""
 
@@ -440,6 +459,7 @@ class MainWindow(QWidget):
         self._pairing_window = None
         self._pending_release: Optional[ReleaseInfo] = None
         self._update_worker: Optional[UpdateWorker] = None
+        self._vision_worker: Optional[VisionWorker] = None
         self._update_action = None
         self._spotlight_window = SpotlightWindow(None)
         self._spotlight_window.command_executed.connect(self._on_spotlight_command_executed)
@@ -1183,34 +1203,37 @@ class MainWindow(QWidget):
 
     def _run_vision_ai(self):
         """Kullanıcı butona bastığında ekranı analiz eder ve hem HUD'a yazar hem seslendirir."""
-        import threading
+        if self._vision_worker is not None and self._vision_worker.isRunning():
+            return
         self.btn_vision.setEnabled(False)
         self.btn_vision.setText("ANALİZ EDİLİYOR...")
         self.on_user_message("👁️ Canlı Vizyon Analizi (Ekrana Bak)")
         self._set_sys_pill("THINKING")
 
-        def _worker():
-            try:
-                from tools.vision import analyze_screen
-                from speech.tts import speak
-                res = analyze_screen("Ekrana bak, ekranda ne var ve önemli detayları özetle.")
-            except Exception as ex:
-                res = f"Vizyon analizi hatası: {ex}"
+        worker = VisionWorker(parent=self)
+        self._vision_worker = worker
+        worker.analysis_finished.connect(self._on_vision_success)
+        worker.analysis_failed.connect(self._on_vision_failure)
+        worker.start()
 
-            def _finish():
-                self.btn_vision.setEnabled(True)
-                self.btn_vision.setText("👁️ VİZYON AI (Ekrana Bak)")
-                idle = "LISTENING" if self._listening_active else "IDLE"
-                self._set_sys_pill(idle)
-                self.on_assistant_message(res)
-                try:
-                    speak(res[:200])
-                except Exception:
-                    pass
+    def _on_vision_success(self, res: str):
+        self.btn_vision.setEnabled(True)
+        self.btn_vision.setText("👁️ VİZYON AI (Ekrana Bak)")
+        idle = "LISTENING" if self._listening_active else "IDLE"
+        self._set_sys_pill(idle)
+        self.on_assistant_message(res)
+        try:
+            from voice.text_to_speech import speak
+            speak(res[:200])
+        except Exception as e:
+            log.error(f"Vision TTS hatası: {e}")
 
-            QTimer.singleShot(0, _finish)
-
-        threading.Thread(target=_worker, daemon=True).start()
+    def _on_vision_failure(self, err: str):
+        self.btn_vision.setEnabled(True)
+        self.btn_vision.setText("👁️ VİZYON AI (Ekrana Bak)")
+        idle = "LISTENING" if self._listening_active else "IDLE"
+        self._set_sys_pill(idle)
+        self.on_error_message(f"Vizyon analizi hatası: {err}")
 
     def _apply_theme(self):
         self.setAutoFillBackground(False)
