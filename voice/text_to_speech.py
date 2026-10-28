@@ -174,7 +174,40 @@ def _speak_pyttsx3(text: str):
     engine.runAndWait()
 
 
+def clean_text_for_speech(text: str) -> str:
+    """Metindeki markdown sembollerini (*, #, _, vb.), kod bloklarını ve
+    gereksiz teknik işaretleri temizleyerek TTS'in akıcı, doğal Türkçe okumasını sağlar."""
+    import re
+    if not text:
+        return ""
+    # 1. Kod bloklarını ve teknik etiketleri kaldır
+    text = re.sub(r"```[\s\S]*?```", " kod bloğu ", text)
+    text = re.sub(r"`([^`]+)`", r"", text)
+    # 2. Markdown linklerini temizle: [Başlık](http://...) -> Başlık
+    text = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"", text)
+    # 3. Kalın ve italik işaretlerini kaldır: **metin**, *metin*, __metin__, _metin_
+    text = re.sub(r"\*{1,3}([^*]+)\*{1,3}", r"", text)
+    text = re.sub(r"_{1,3}([^_]+)_{1,3}", r"", text)
+    # Kalan tekil veya çift yıldız/alt çizgileri tamamen sil
+    text = text.replace("*", "").replace("_", "")
+    # 4. Başlıkları temizle: ### Başlık -> Başlık
+    text = re.sub(r"^\s*#{1,6}\s*", "", text, flags=re.MULTILINE)
+    # 5. Liste ve madde işaretlerini temizle: - madde, + madde, 1. madde
+    text = re.sub(r"^\s*[-+•]\s+", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^\s*\d+\.\s*", "", text, flags=re.MULTILINE)
+    # 6. Parantez içi teknik işaretleri ve gereksiz sembolleri temizle
+    text = re.sub(r"[#~|><\[\]{}^@/\=]+", " ", text)
+    # 7. Emojileri temizle
+    text = re.sub(r"[𐀀-􏿿]", "", text)
+    # 8. Boşlukları ve noktalama işaretlerini düzelt
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
 def speak(text: str):
+    if not text:
+        return
+    text = clean_text_for_speech(text)
     if not text:
         return
     try:
@@ -198,7 +231,7 @@ def synthesize_wav_bytes(text: str) -> bytes:
     """Metni yerel Piper veya gTTS ile WAV baytlarına dönüştürür (mobil yayın)."""
     import io
     import wave
-    clean = (text or "").strip()
+    clean = clean_text_for_speech(text or "").strip()
     if not clean:
         return b""
     try:

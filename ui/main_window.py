@@ -1223,8 +1223,15 @@ class MainWindow(QWidget):
         self._set_sys_pill(idle)
         self.on_assistant_message(res)
         try:
-            from voice.text_to_speech import speak
-            speak(res[:200])
+            from voice.text_to_speech import speak, clean_text_for_speech
+            clean = clean_text_for_speech(res)
+            if len(clean) > 260:
+                truncated = clean[:260]
+                last_dot = max(truncated.rfind("."), truncated.rfind("!"), truncated.rfind("?"))
+                spoken = truncated[:last_dot + 1] if last_dot > 80 else truncated.rstrip() + "."
+            else:
+                spoken = clean
+            speak(spoken)
         except Exception as e:
             log.error(f"Vision TTS hatası: {e}")
 

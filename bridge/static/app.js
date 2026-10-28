@@ -763,7 +763,12 @@ async function fetchStatus() {
         resultBox.textContent = answer;
       }
       appendMsg("assistant", answer);
-      playPhoneAudio(answer.slice(0, 250));
+      const cleanAudio = answer
+        .replace(/```[\s\S]*?```/g, '')
+        .replace(/[*#_~`>\-\[\]]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      playPhoneAudio(cleanAudio.slice(0, 250));
       setBadge("IDLE");
     } catch (err) {
       if (resultBox) {

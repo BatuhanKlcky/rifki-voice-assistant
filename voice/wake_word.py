@@ -38,12 +38,15 @@ _FOLD = str.maketrans({
     "±": "i", "Ä": "", "Å": "",
 })
 
-# Tam / yakın yazımlar
+# Tam / yakın yazımlar ve Google STT alternatifleri
 _RIFKI_ALIASES = frozenset({
     "rifki", "refki", "rivki", "rifky", "rifkey", "riffki", "riffkey",
     "rifke", "rifku", "ricki", "ricky", "rikki", "rikky",
     "reefki", "reefkey", "risky", "riski", "ripki", "arifki",
-    "heyrifki", "yarifki",
+    "heyrifki", "yarifki", "merhabarifki", "eyrifki",
+    # Google STT'nin Türkçe ses tonlamasında "Rıfkı" için en sık ürettiği varyasyonlar:
+    "tipki", "tipk", "tıpkı", "tıpki", "refik", "rifat", "rızkı", "rizki", "rızk", "rizk",
+    "rufi", "ruski", "rifkim", "rıfkım", "kirki", "kırkı", "fistik", "fıstık",
 })
 
 # Google'ın kestiği kısa parçalar (tek başına kabul)
@@ -176,12 +179,18 @@ def wait_for_wake_word(stop_flag_check=lambda: False) -> bool:
                 f"mic={source.device_index})"
             )
             try:
-                _recognizer.adjust_for_ambient_noise(source, duration=0.2)
+                _recognizer.adjust_for_ambient_noise(source, duration=0.6)
             except Exception:
                 pass
-            _recognizer.dynamic_energy_threshold = False
-            # Kısa kelime için eşiği düşük tut
-            _recognizer.energy_threshold = min(max(_recognizer.energy_threshold, 80), 150)
+            # Ortam gürültüsüne göre dinamik eşik: 150'ye sabitleme (gürültülü kulaklıklarda sonsuz döngüyü engeller)
+            measured_energy = _recognizer.energy_threshold
+            _recognizer.energy_threshold = max(measured_energy * 1.15, 300)
+            _recognizer.dynamic_energy_threshold = True
+            _recognizer.dynamic_energy_adjustment_damping = 0.15
+            _recognizer.dynamic_energy_ratio = 1.4
+            _recognizer.pause_threshold = 0.5
+            _recognizer.phrase_threshold = 0.15
+            _recognizer.non_speaking_duration = 0.35
 
             while not stop_flag_check():
                 try:
