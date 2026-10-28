@@ -174,4 +174,14 @@ def _dispatch(action: str, body: dict) -> tuple[str, dict]:
         q = body.get("query") or "lofi beats"
         return media.play_youtube_music(q), {}
 
+    # Ekran Analizi (Vision AI) ve Görüntü
+    if action in ("analyze_screen", "vision"):
+        from tools import vision
+        q = body.get("question") or "Ekranda ne var? Detaylı incele."
+        return vision.analyze_screen(q), {}
+
+    if action in ("take_screenshot", "screenshot"):
+        from tools import system
+        return system.take_screenshot(), {}
+
     raise ValueError(f"bilinmeyen aksiyon: {action}")

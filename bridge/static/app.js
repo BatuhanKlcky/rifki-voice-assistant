@@ -708,6 +708,10 @@ async function fetchStatus() {
       if (!text) return;
       if (cmd) cmd.value = text;
 
+      if (text.includes("ekrana bak")) {
+        runVisionAnalysis();
+        return;
+      }
       if (text.includes("ekran görüntüsü") || text.includes("ekran al")) {
         if (btnShotDirect) {
           btnShotDirect.click();
@@ -724,6 +728,63 @@ async function fetchStatus() {
       submitCommand(text);
     });
   });
+
+
+  // =========================================================================
+  // VISION AI (Görsel Analiz)
+  // =========================================================================
+  async function runVisionAnalysis(customQuestion) {
+    const qInput = document.getElementById("visionQuestion");
+    const q = customQuestion || (qInput ? qInput.value.trim() : "") || "Ekranda ne görüyorsun? Özetle.";
+    const resultBox = document.getElementById("visionResult");
+    if (resultBox) {
+      resultBox.style.display = "block";
+      resultBox.textContent = "🔍 Ekran taranıyor ve yapay zekâ multimodal model ile analiz ediyor, lütfen bekleyin...";
+    }
+    appendMsg("user", `👁️ Ekrana Bak: ${q}`);
+    setBadge("THINKING");
+
+    try {
+      const res = await fetch(`/api/vision?token=${encodeURIComponent(token)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: q }),
+      });
+      if (res.status === 401) {
+        showAuth();
+        return;
+      }
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Görsel analiz başarısız oldu.");
+      }
+      const answer = data.analysis || "Analiz tamamlandı.";
+      if (resultBox) {
+        resultBox.textContent = answer;
+      }
+      appendMsg("assistant", answer);
+      playPhoneAudio(answer.slice(0, 250));
+      setBadge("IDLE");
+    } catch (err) {
+      if (resultBox) {
+        resultBox.textContent = `❌ Hata: ${err.message}`;
+      }
+      appendMsg("error", "Vision Hatası: " + err.message);
+      setBadge("IDLE");
+    }
+  }
+
+  const btnRunVision = document.getElementById("btnRunVision");
+  if (btnRunVision) {
+    btnRunVision.addEventListener("click", () => runVisionAnalysis());
+  }
+
+  const btnVisionQuick = document.getElementById("btnVisionQuick");
+  if (btnVisionQuick) {
+    btnVisionQuick.addEventListener("click", () => {
+      runVisionAnalysis("Ekranda ne görüyorsun? Önemli detayları özetle.");
+    });
+  }
 
   // =========================================================================
   // 5. APPS & LIVE SCREEN

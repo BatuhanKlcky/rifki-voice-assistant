@@ -32,13 +32,28 @@ def get_datetime(*args, **kwargs) -> str:
 
 
 def _grab_screenshot_image():
-    """Ekranı PIL Image olarak alır (ImageGrab → pyautogui)."""
+    """Ekranı PIL Image olarak alır (Windows InputDesktop bağlamı + ImageGrab/pyautogui)."""
+    import os
+    import ctypes
+
+    hdesk = None
+    if os.name == "nt":
+        try:
+            user32 = ctypes.windll.user32
+            hdesk = user32.OpenInputDesktop(0, False, 0x01FF)
+            if hdesk:
+                user32.SetThreadDesktop(hdesk)
+        except Exception:
+            pass
+
     errors: list[str] = []
     try:
         from PIL import ImageGrab
 
         image = ImageGrab.grab(all_screens=True)
         if image is not None:
+            if hdesk:
+                ctypes.windll.user32.CloseDesktop(hdesk)
             return image
     except Exception as e:
         errors.append(f"ImageGrab: {e}")
@@ -48,9 +63,17 @@ def _grab_screenshot_image():
 
         image = pyautogui.screenshot()
         if image is not None:
+            if hdesk:
+                ctypes.windll.user32.CloseDesktop(hdesk)
             return image
     except Exception as e:
         errors.append(f"pyautogui: {e}")
+
+    if hdesk:
+        try:
+            ctypes.windll.user32.CloseDesktop(hdesk)
+        except Exception:
+            pass
 
     raise RuntimeError("; ".join(errors) or "ekran görüntüsü alınamadı")
 

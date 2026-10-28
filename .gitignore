@@ -72,3 +72,9 @@ tools/*.zip
 tools/cmdtools.zip
 voice/piper_models/*.onnx
 voice/piper_models/*.wav
+
+# Personal bridges & keys
+bridge/telegram_bridge.py
+bridge/whatsapp_bridge.py
+run_telegram.bat
+premium_keys.txt

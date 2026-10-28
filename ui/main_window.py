@@ -793,6 +793,13 @@ class MainWindow(QWidget):
                 except Exception as e:
                     log.error(f"Mobil screenshot kısayolu: {e}")
                     reply = "Ekran görüntüsü alınamadı."
+            elif any(k in folded for k in ("ekrana bak", "ekrani incele", "ekranı incele", "vizyon", "vision", "ekranda ne var", "ekran analizi")):
+                try:
+                    from tools.vision import analyze_screen
+                    reply = analyze_screen(text)
+                except Exception as e:
+                    log.error(f"Vision analizi hatası: {e}")
+                    reply = f"Görsel analiz yapılırken hata oluştu: {e}"
             else:
                 try:
                     reply = rifki_brain.process(
@@ -1154,11 +1161,56 @@ class MainWindow(QWidget):
             "QPushButton:hover { background-color: rgba(14, 42, 68, 220); border-color: #00E5FF; }"
         )
         self.btn_spotlight.clicked.connect(self.toggle_spotlight)
-        action.addWidget(self.btn_spotlight)
+        self.btn_vision = QPushButton("👁️ VİZYON AI (Ekrana Bak)")
+        self.btn_vision.setCursor(Qt.PointingHandCursor)
+        self.btn_vision.setStyleSheet(
+            "QPushButton { background-color: rgba(6, 28, 40, 220); color: #00E5FF; "
+            "border: 1px solid #00B4D8; padding: 6px 14px; font-family: Consolas; "
+            "font-size: 11px; font-weight: bold; letter-spacing: 1px; border-radius: 4px; }"
+            "QPushButton:hover { background-color: rgba(14, 56, 80, 240); border-color: #3DFFB0; color: #3DFFB0; }"
+        )
+        self.btn_vision.clicked.connect(self._run_vision_ai)
+        
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(6)
+        btn_row.addWidget(self.btn_spotlight)
+        btn_row.addWidget(self.btn_vision)
+        action.addLayout(btn_row)
         action.addWidget(self.toggle_button)
         action.addWidget(serial)
         bottom.addLayout(action)
         return bottom
+
+    def _run_vision_ai(self):
+        """Kullanıcı butona bastığında ekranı analiz eder ve hem HUD'a yazar hem seslendirir."""
+        import threading
+        self.btn_vision.setEnabled(False)
+        self.btn_vision.setText("ANALİZ EDİLİYOR...")
+        self.on_user_message("👁️ Canlı Vizyon Analizi (Ekrana Bak)")
+        self._set_sys_pill("THINKING")
+
+        def _worker():
+            try:
+                from tools.vision import analyze_screen
+                from speech.tts import speak
+                res = analyze_screen("Ekrana bak, ekranda ne var ve önemli detayları özetle.")
+            except Exception as ex:
+                res = f"Vizyon analizi hatası: {ex}"
+
+            def _finish():
+                self.btn_vision.setEnabled(True)
+                self.btn_vision.setText("👁️ VİZYON AI (Ekrana Bak)")
+                idle = "LISTENING" if self._listening_active else "IDLE"
+                self._set_sys_pill(idle)
+                self.on_assistant_message(res)
+                try:
+                    speak(res[:200])
+                except Exception:
+                    pass
+
+            QTimer.singleShot(0, _finish)
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     def _apply_theme(self):
         self.setAutoFillBackground(False)

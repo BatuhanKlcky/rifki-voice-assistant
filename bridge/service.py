@@ -190,6 +190,7 @@ class MobileBridge:
         app.router.add_get("/api/volume", self._handle_volume)
         app.router.add_get("/api/telemetry", self._handle_telemetry)
         app.router.add_get("/api/tts", self._handle_tts)
+        app.router.add_post("/api/vision", self._handle_vision)
         app.router.add_get("/ws", self._handle_ws)
         static = _static_dir()
         if static.is_dir():
@@ -465,6 +466,24 @@ class MobileBridge:
         self.publish_user(f"Uygulama aç: {name}")
         self.publish_assistant(reply)
         return web.json_response({"reply": reply, **self.status_payload()})
+
+    async def _handle_vision(self, request):
+        from aiohttp import web
+        if not self._token_ok(request):
+            return web.json_response({"error": "yetkisiz"}, status=401)
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        question = (body.get("question") or "Ekranda ne görüyorsun? Özetle.").strip()
+        loop = asyncio.get_running_loop()
+        try:
+            from tools.vision import analyze_screen
+            result = await loop.run_in_executor(None, analyze_screen, question)
+            return web.json_response({"ok": True, "question": question, "analysis": result})
+        except Exception as e:
+            log.error(f"Vision API hatası: {e}")
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
 
     async def _handle_ws(self, request):
         from aiohttp import WSMsgType, web

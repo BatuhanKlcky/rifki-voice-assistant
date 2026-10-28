@@ -212,3 +212,22 @@ def browser_tab_action(action: str, *args, **kwargs) -> str:
     except Exception as e:
         log.error(f"Sekme eylemi hatası: {e}")
         return "Sekme eylemi gerçekleştirilemedi."
+
+
+def get_active_window_title() -> str:
+    """Ön plandaki aktif pencerenin başlığını döndürür."""
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return "Masaüstü"
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length > 0:
+            buff = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buff, length + 1)
+            val = buff.value.strip()
+            return val if val else "Masaüstü"
+        return "Masaüstü"
+    except Exception:
+        return "Bilinmiyor"

@@ -19,7 +19,7 @@ from typing import Callable, Optional
 
 from core.logger import get_logger
 from core.security import is_critical, confirm
-from tools import applications, browser, filesystem, system, web, notifications, media, wake_on_lan, desktop_automation
+from tools import applications, browser, filesystem, system, web, notifications, media, wake_on_lan, desktop_automation, vision
 from tools import memory_tool
 
 log = get_logger("router")
@@ -163,6 +163,19 @@ TOOL_SCHEMAS = [
         "name": "take_screenshot",
         "description": "Ekran görüntüsü alır ve kaydeder.",
         "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "analyze_screen",
+        "description": "Bilgisayar ekranını gerçek zamanlı inceler, ekrandaki hata mesajlarını, kodları, açık pencereleri veya görsel detayları multimodal Vision AI ile analiz eder. 'Ekrana bak', 'ekrandaki hatayı çöz', 'bu ekranda ne var' isteklerinde çağrılır.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "Kullanıcının ekranda neyi incelemek istediğine dair soru veya odak noktası.",
+                }
+            },
+        },
     },
     {
         "name": "shutdown_computer",
@@ -358,6 +371,7 @@ TOOL_DISPATCH = {
     "get_datetime": system.get_datetime,
     "set_volume": system.set_volume,
     "take_screenshot": system.take_screenshot,
+    "analyze_screen": vision.analyze_screen,
     "shutdown_computer": system.shutdown_computer,
     "restart_computer": system.restart_computer,
     "search_web": web.search_web,

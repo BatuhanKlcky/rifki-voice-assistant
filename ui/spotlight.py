@@ -54,8 +54,13 @@ class CommandWorkerThread(QThread):
 
     def run(self):
         try:
-            from core.ai import rifki_brain
-            reply = rifki_brain.process(self.command_text)
+            cmd = self.command_text.casefold()
+            if any(k in cmd for k in ('ekrana bak', 'ekrani incele', 'ekranı incele', 'vizyon', 'vision', 'ekranda ne var', 'ekran analizi')):
+                from tools.vision import analyze_screen
+                reply = analyze_screen(self.command_text)
+            else:
+                from core.ai import rifki_brain
+                reply = rifki_brain.process(self.command_text)
             self.response_ready.emit(reply)
         except Exception as e:
             self.error_occurred.emit(f"Hata: {e}")
@@ -154,6 +159,28 @@ class SpotlightWindow(QWidget):
         """)
         self.btn_mic.clicked.connect(self._toggle_voice_input)
         input_row.addWidget(self.btn_mic)
+
+        # Vision AI Button (Ekrana Bak)
+        self.btn_vision = QPushButton("👁️")
+        self.btn_vision.setFixedSize(36, 36)
+        self.btn_vision.setCursor(Qt.PointingHandCursor)
+        self.btn_vision.setToolTip("Ekrana Bak / Canlı Vizyon Analizi (Vision AI)")
+        self.btn_vision.setStyleSheet("""
+            QPushButton {
+                background-color: #0D1A2A;
+                border: 1px solid #1C3854;
+                border-radius: 18px;
+                font-size: 14px;
+                color: #00E5FF;
+            }
+            QPushButton:hover {
+                background-color: #122840;
+                border-color: #00E5FF;
+                color: #FFFFFF;
+            }
+        """)
+        self.btn_vision.clicked.connect(self._trigger_screen_vision)
+        input_row.addWidget(self.btn_vision)
 
         # Text Line Edit
         self.input_edit = QLineEdit()
@@ -286,6 +313,12 @@ class SpotlightWindow(QWidget):
     def _on_voice_error(self, err: str):
         self._is_listening = False
         self._set_status("MİKROFON HATASI", "#FF4757")
+
+    def _trigger_screen_vision(self):
+        current_text = self.input_edit.text().strip()
+        cmd = current_text if current_text else "Ekrana bak, ekranda ne var ve önemli detayları özetle."
+        self.input_edit.setText(cmd)
+        self._submit_command()
 
     def _submit_command(self):
         text = self.input_edit.text().strip()

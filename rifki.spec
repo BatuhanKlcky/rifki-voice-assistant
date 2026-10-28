@@ -69,6 +69,7 @@ hiddenimports = [
     "core.version",
     "core.updater",
     "tools.media",
+    "tools.vision",
     "qrcode",
     "qrcode.image.pil",
 ]

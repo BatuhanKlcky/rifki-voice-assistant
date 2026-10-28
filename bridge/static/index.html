@@ -105,6 +105,7 @@
       <!-- Quick Chips -->
       <div class="quick-chips">
         <button type="button" class="chip" data-cmd="durum raporu ver">📊 Rapor Ver</button>
+        <button type="button" class="chip" data-cmd="ekrana bak">👁️ Ekrana Bak</button>
         <button type="button" class="chip" data-cmd="ekran görüntüsü al">📸 Ekran Al</button>
         <button type="button" class="chip" data-cmd="sesi yüzde elli yap">🔊 Ses %50</button>
         <button type="button" class="chip" data-cmd="hafızandaki notları listele">🧠 Notlarım</button>
@@ -332,6 +333,21 @@
         </div>
         <p class="card-hint">Tam ekran görüntülemek için resme dokunun.</p>
       </div>
+
+      <!-- Vision AI Analiz Kartı -->
+      <div class="card" style="margin-top: 14px; border: 1px solid rgba(0, 229, 255, 0.3); background: rgba(8, 20, 32, 0.85);">
+        <div class="card-head">
+          <h3 style="color: #00e5ff;">👁️ Vision AI (Yapay Zekâ Vizyonu)</h3>
+        </div>
+        <p class="card-hint" style="margin-top: 0; margin-bottom: 8px;">Rıfkı ekranınızın anlık görüntüsünü yapay zekâ multimodal modeliyle inceler ve detaylı rapor sunar.</p>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <input type="text" id="visionQuestion" placeholder="Özel soru (Örn: 'Hata mesajı ne diyor?', 'Kodu incele', vb.)" style="background:#071422; border:1px solid #1a3854; border-radius:8px; padding:10px 12px; color:#e0f7fa; font-size:13px; outline:none;" />
+          <button type="button" id="btnRunVision" class="btn-action" style="background: linear-gradient(135deg, #0096c7, #00e5ff); color: #020b14; font-weight: bold; padding: 12px; border-radius: 8px; justify-content: center; display: flex; align-items: center; gap: 8px;">
+            <span style="font-size:16px;">🧠</span> <span>Ekrana Bak & Analiz Et</span>
+          </button>
+        </div>
+        <div id="visionResult" style="display: none; margin-top: 12px; background: #050d18; border: 1px solid #102a43; border-radius: 8px; padding: 12px; font-size: 13px; line-height: 1.5; color: #b2ebf2; white-space: pre-wrap;"></div>
+      </div>
     </section>
   </main>
 
@@ -351,6 +367,11 @@
 
       <!-- Text Input -->
       <input id="cmd" type="text" enterkeyhint="send" autocomplete="off" placeholder="Komut yaz veya mikrofona dokun…" />
+
+      <!-- Vision AI Quick Button -->
+      <button type="button" id="btnVisionQuick" class="btn-tts" title="Ekrana Bak (Vision AI)" aria-label="Vision AI" style="font-size:16px;">
+        👁️
+      </button>
 
       <!-- TTS Speech Feedback Toggle -->
       <button type="button" id="btnTtsToggle" class="btn-tts active" title="Telefonda sesli yanıt oku" aria-label="Sesli Yanıt">
@@ -374,6 +395,6 @@
     <p class="lightbox-hint">Kapatmak için dokunun</p>
   </div>
 
-  <script src="/static/app.js?v=2.4.0"></script>
+  <script src="/static/app.js?v=2.5.0"></script>
 </body>
 </html>

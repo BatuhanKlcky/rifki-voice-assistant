@@ -1,6 +1,6 @@
 ; RIFKI Windows Setup — OmniRoute bilgilendirme + .env formu
 #define MyAppName "RIFKI"
-#define MyAppVersion "2.4.0"
+#define MyAppVersion "2.5.0"
 #define MyAppPublisher "RIFKI"
 #define MyAppExeName "RIFKI.exe"
 ; Resmi Windows kurulum: OmniRoute.Setup.3.8.51.exe (~555 MB)
@@ -26,7 +26,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 SetupLogging=yes
 UninstallDisplayIcon={app}\{#MyAppExeName}
 SetupIconFile=..\assets\rifki.ico
-VersionInfoVersion=2.4.0.0
+VersionInfoVersion=2.5.0.0
 VersionInfoProductName=RIFKI
 
 [Languages]

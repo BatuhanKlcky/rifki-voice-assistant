@@ -42,7 +42,7 @@ Write-Host "ISCC: $iscc"
 & $iscc "rifki.iss"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$out = Join-Path $root "dist\RIFKI-Setup-2.3.0.exe"
+$out = Join-Path $root "dist\RIFKI-Setup-2.5.0.exe"
 if (Test-Path $out) {
     Write-Host "OK: $out"
 } else {
