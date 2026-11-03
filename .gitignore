@@ -54,9 +54,6 @@ Thumbs.db
 .vscode/
 *.swp
 
-# Accidental junk
-{config,core,voice,tools,ui
-
 # extras
 *.aab
 mobile-android/RIFKI-mobile-*.apk
@@ -66,14 +63,13 @@ tools/cloudflared.exe
 # Local Gradle distribution
 tools/gradle-8.7/
 
-
 # Heavy local downloads / models (Releases veya lokal)
 tools/*.zip
 tools/cmdtools.zip
 voice/piper_models/*.onnx
 voice/piper_models/*.wav
 
-# Personal bridges & keys
+# Personal bridges & local untracked scripts
 bridge/telegram_bridge.py
 bridge/whatsapp_bridge.py
 run_telegram.bat

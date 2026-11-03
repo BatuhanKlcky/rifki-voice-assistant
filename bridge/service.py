@@ -8,9 +8,11 @@ Dışarıya doğrudan açılmaz (127.0.0.1); Cloudflare Tunnel bağlanır.
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 import json
 import secrets
 import threading
+import time
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -20,6 +22,10 @@ from core.logger import get_logger
 log = get_logger("bridge")
 
 CommandHandler = Callable[[str], str]
+
+_AUTH_WINDOW_SECONDS = 60.0
+_AUTH_MAX_FAILURES = 10
+_AUTH_LOCKOUT_SECONDS = 300.0
 
 
 def _static_dir() -> Path:
@@ -43,7 +49,7 @@ class MobileBridge:
         self.listening = False
         self.last_user = ""
         self.last_assistant = ""
-        self.history: list[dict[str, str]] = []
+        self.history: deque[dict[str, str]] = deque(maxlen=100)
         self._clients: set[Any] = set()
         self._command_handler: Optional[CommandHandler] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
@@ -51,6 +57,8 @@ class MobileBridge:
         self._runner = None
         self._site = None
         self._stop = threading.Event()
+        self._failed_auth: dict[str, list[float]] = {}
+        self._locked_ips: dict[str, float] = {}
 
     def set_command_handler(self, handler: CommandHandler) -> None:
         self._command_handler = handler
@@ -61,7 +69,7 @@ class MobileBridge:
             "listening": self.listening,
             "last_user": self.last_user,
             "last_assistant": self.last_assistant,
-            "history": list(self.history[-40:]),
+            "history": list(self.history)[-40:],
         }
 
     def _live_payload(self, **extra) -> dict:
@@ -169,9 +177,12 @@ class MobileBridge:
         from aiohttp import web
 
         @web.middleware
-        async def _cache_headers(request, handler):
+        async def _security_and_cache_headers(request, handler):
             resp = await handler(request)
             path = request.path or ""
+            resp.headers["X-Content-Type-Options"] = "nosniff"
+            resp.headers["X-Frame-Options"] = "DENY"
+            resp.headers["Referrer-Policy"] = "no-referrer"
             if path.startswith("/static/"):
                 resp.headers["Cache-Control"] = "public, max-age=300"
             elif path in ("/", "/index.html") or path.endswith("index.html"):
@@ -179,7 +190,7 @@ class MobileBridge:
             return resp
 
         self._loop = asyncio.get_running_loop()
-        app = web.Application(middlewares=[_cache_headers])
+        app = web.Application(middlewares=[_security_and_cache_headers], client_max_size=2 * 1024 * 1024)
         app.router.add_get("/", self._handle_index)
         app.router.add_get("/api/status", self._handle_status)
         app.router.add_post("/api/command", self._handle_command)
@@ -210,35 +221,82 @@ class MobileBridge:
         await self._runner.cleanup()
         log.info("Mobil köprü durdu.")
 
-    def _token_ok(self, request) -> bool:
+    @staticmethod
+    def _client_ip(request) -> str:
+        cf_ip = request.headers.get("CF-Connecting-IP", "").strip()
+        if cf_ip:
+            return cf_ip
+        return request.remote or "unknown"
+
+    def _is_ip_locked(self, ip: str) -> bool:
+        now = time.monotonic()
+        until = self._locked_ips.get(ip, 0.0)
+        if until > now:
+            return True
+        if ip in self._locked_ips:
+            del self._locked_ips[ip]
+        return False
+
+    def _record_auth_failure(self, ip: str) -> None:
+        now = time.monotonic()
+        attempts = [t for t in self._failed_auth.get(ip, []) if now - t < _AUTH_WINDOW_SECONDS]
+        attempts.append(now)
+        self._failed_auth[ip] = attempts
+        if len(attempts) >= _AUTH_MAX_FAILURES:
+            self._locked_ips[ip] = now + _AUTH_LOCKOUT_SECONDS
+            self._failed_auth.pop(ip, None)
+            log.warning(f"Güvenlik uyarısı: Çok fazla hatalı token denemesi nedeniyle IP 5 dk engellendi -> {ip}")
+
+    def _token_ok(self, request, record_failure: bool = True) -> bool:
+        ip = self._client_ip(request)
+        if self._is_ip_locked(ip):
+            return False
+
         expected = settings.MOBILE_BRIDGE_TOKEN.strip()
         if not expected:
             return False
+
         auth = request.headers.get("Authorization", "")
         if auth.lower().startswith("bearer "):
             got = auth[7:].strip()
-            if secrets.compare_digest(got, expected):
+            if got and secrets.compare_digest(got, expected):
+                self._failed_auth.pop(ip, None)
                 return True
-        q = request.rel_url.query.get("token", "")
-        if q and secrets.compare_digest(q, expected):
+
+        cookie_tok = request.cookies.get("rifki_session", "").strip()
+        if cookie_tok and secrets.compare_digest(cookie_tok, expected):
+            self._failed_auth.pop(ip, None)
             return True
+
+        q = request.rel_url.query.get("token", "").strip()
+        if q and secrets.compare_digest(q, expected):
+            self._failed_auth.pop(ip, None)
+            return True
+
+        if record_failure:
+            self._record_auth_failure(ip)
         return False
 
     async def _handle_index(self, request):
         from aiohttp import web
 
-        if not self._token_ok(request):
-            # Sayfa token'ı query veya localStorage ile alacak; ilk girişte
-            # token yoksa yine de HTML ver (JS 401 gösterir). Query yoksa da
-            # HTML servis edilir — API korumalı kalır.
-            pass
+        authed = self._token_ok(request, record_failure=False)
         index = _static_dir() / "index.html"
         if not index.is_file():
             return web.Response(text="Mobil panel bulunamadı.", status=500)
-        return web.FileResponse(
+        resp = web.FileResponse(
             index,
             headers={"Cache-Control": "no-cache"},
         )
+        if authed:
+            resp.set_cookie(
+                "rifki_session",
+                settings.MOBILE_BRIDGE_TOKEN.strip(),
+                httponly=True,
+                samesite="Strict",
+                max_age=86400 * 30,
+            )
+        return resp
 
     async def _handle_status(self, request):
         from aiohttp import web
@@ -256,7 +314,7 @@ class MobileBridge:
             body = await request.json()
         except Exception:
             return web.json_response({"error": "geçersiz json"}, status=400)
-        text = (body.get("text") or body.get("command") or "").strip()
+        text = (body.get("text") or body.get("command") or "").strip()[:1024]
         if not text:
             return web.json_response({"error": "boş komut"}, status=400)
         handler = self._command_handler
@@ -351,9 +409,7 @@ class MobileBridge:
             None, lambda: run_remote_action(action, body)
         )
         if not result.get("ok"):
-            status = 400 if result.get("needs_confirm") else 400
-            if "bilinmeyen" in (result.get("error") or ""):
-                status = 400
+            status = 400
             return web.json_response(result, status=status)
 
         reply = result.get("reply") or ""
@@ -385,7 +441,7 @@ class MobileBridge:
 
         if not self._token_ok(request):
             return web.Response(text="yetkisiz", status=401)
-        text = (request.rel_url.query.get("text") or "").strip()
+        text = (request.rel_url.query.get("text") or "").strip()[:1000]
         if not text:
             return web.Response(text="boş metin", status=400)
 
@@ -423,7 +479,7 @@ class MobileBridge:
 
         if not self._token_ok(request):
             return web.json_response({"error": "yetkisiz"}, status=401)
-        q = (request.rel_url.query.get("q") or "").strip()
+        q = (request.rel_url.query.get("q") or "").strip()[:120]
         try:
             limit = int(request.rel_url.query.get("limit") or "400")
         except ValueError:
@@ -449,7 +505,7 @@ class MobileBridge:
             body = await request.json()
         except Exception:
             return web.json_response({"error": "geçersiz json"}, status=400)
-        name = (body.get("name") or "").strip()
+        name = (body.get("name") or body.get("path") or "").strip()
         if not name:
             return web.json_response({"error": "uygulama adı gerekli"}, status=400)
         # Ham yol / AppID kabul etme — yalnızca katalog adı
@@ -475,7 +531,7 @@ class MobileBridge:
             body = await request.json()
         except Exception:
             body = {}
-        question = (body.get("question") or "Ekranda ne görüyorsun? Özetle.").strip()
+        question = (body.get("question") or "Ekranda ne görüyorsun? Özetle.").strip()[:512]
         loop = asyncio.get_running_loop()
         try:
             from tools.vision import analyze_screen

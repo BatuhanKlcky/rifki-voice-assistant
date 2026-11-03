@@ -66,7 +66,17 @@
 
   // State & Config
   const params = new URLSearchParams(location.search);
-  let token = params.get("token") || localStorage.getItem("rifki_bridge_token") || "";
+  const urlToken = params.get("token");
+  if (urlToken) {
+    localStorage.setItem("rifki_bridge_token", urlToken);
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }
+  let token = urlToken || localStorage.getItem("rifki_bridge_token") || "";
+  function authHeaders(extra = {}) {
+    return Object.assign({ "Authorization": `Bearer ${token}` }, extra);
+  }
   let currentState = "OFF";
   let ttsEnabled = true;
   let ws = null;
@@ -490,7 +500,7 @@
 async function fetchStatus() {
     if (!token) return;
     try {
-      const res = await fetch(`/api/status?token=${encodeURIComponent(token)}`);
+      const res = await fetch("/api/status", { headers: authHeaders() });
       if (res.status === 401) { showAuth(); return; }
       if (!res.ok) return;
       const data = await res.json();
@@ -503,7 +513,7 @@ async function fetchStatus() {
   async function fetchTelemetry() {
     if (!token) return;
     try {
-      const res = await fetch(`/api/telemetry?token=${encodeURIComponent(token)}`);
+      const res = await fetch("/api/telemetry", { headers: authHeaders() });
       if (res.status === 401) { showAuth(); return; }
       if (!res.ok) return;
       const data = await res.json();
@@ -535,7 +545,7 @@ async function fetchStatus() {
   async function fetchVolume() {
     if (!token) return;
     try {
-      const res = await fetch(`/api/volume?token=${encodeURIComponent(token)}`);
+      const res = await fetch("/api/volume", { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
       if (typeof data.level === "number") {
@@ -567,9 +577,9 @@ async function fetchStatus() {
     if (confirmMsg && !window.confirm(confirmMsg)) return;
     try {
       const body = { action, confirm: !!confirmMsg, ...params };
-      const res = await fetch(`/api/remote?token=${encodeURIComponent(token)}`, {
+      const res = await fetch("/api/remote", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(body),
       });
       const data = await res.json();
@@ -689,7 +699,7 @@ async function fetchStatus() {
     btnShotDirect.addEventListener("click", async () => {
       try {
         appendMsg("user", "Ekran görüntüsü al");
-        const res = await fetch(`/api/screenshot?token=${encodeURIComponent(token)}`);
+        const res = await fetch("/api/screenshot", { headers: authHeaders() });
         if (!res.ok) throw new Error("Görüntü alınamadı");
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
@@ -745,9 +755,9 @@ async function fetchStatus() {
     setBadge("THINKING");
 
     try {
-      const res = await fetch(`/api/vision?token=${encodeURIComponent(token)}`, {
+      const res = await fetch("/api/vision", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ question: q }),
       });
       if (res.status === 401) {
@@ -798,7 +808,7 @@ async function fetchStatus() {
     if (!token) return;
     try {
       if (appsMeta) appsMeta.textContent = "Yükleniyor…";
-      const res = await fetch(`/api/apps?limit=250&token=${encodeURIComponent(token)}`);
+      const res = await fetch("/api/apps?limit=250", { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
       appsCache = data.apps || [];
@@ -820,10 +830,10 @@ async function fetchStatus() {
       b.innerHTML = `<span>${escapeHtml(app.name)}</span><span class="pill">Başlat</span>`;
       b.addEventListener("click", async () => {
         try {
-          await fetch(`/api/apps/launch?token=${encodeURIComponent(token)}`, {
+          await fetch("/api/apps/launch", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ path: app.path }),
+            headers: authHeaders({ "Content-Type": "application/json" }),
+            body: JSON.stringify({ name: app.name }),
           });
           appendMsg("assistant", `${app.name} başlatıldı.`);
         } catch (e) {
@@ -851,7 +861,7 @@ async function fetchStatus() {
   async function refreshLive() {
     if (!token) return;
     try {
-      const res = await fetch(`/api/screenshot?token=${encodeURIComponent(token)}&t=${Date.now()}`);
+      const res = await fetch(`/api/screenshot?t=${Date.now()}`, { headers: authHeaders() });
       if (!res.ok) return;
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -1005,9 +1015,9 @@ async function fetchStatus() {
     setBadge("THINKING");
 
     try {
-      const res = await fetch(`/api/command?token=${encodeURIComponent(token)}`, {
+      const res = await fetch("/api/command", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ text: text, command: text }),
       });
       if (res.status === 401) { showAuth(); return; }

@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.view.View
@@ -78,6 +79,8 @@ class MainActivity : AppCompatActivity() {
         settings.cacheMode = WebSettings.LOAD_DEFAULT
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
         settings.mediaPlaybackRequiresUserGesture = false
+        settings.allowFileAccess = false
+        settings.allowContentAccess = false
 
         // Bridge for Web Panel JavaScript to call native Wake-on-LAN directly
         webView.addJavascriptInterface(AndroidBridge(), "AndroidBridge")
@@ -91,7 +94,21 @@ class MainActivity : AppCompatActivity() {
 
             override fun onPermissionRequest(request: PermissionRequest?) {
                 runOnUiThread {
-                    request?.grant(request.resources)
+                    if (request == null) return@runOnUiThread
+                    val pairedHost = try {
+                        Uri.parse(Prefs.getUrl(this@MainActivity)).host?.lowercase()
+                    } catch (_: Exception) {
+                        null
+                    }
+                    val reqHost = request.origin?.host?.lowercase()
+                    val audioOnly = request.resources
+                        .filter { it == PermissionRequest.RESOURCE_AUDIO_CAPTURE }
+                        .toTypedArray()
+                    if (pairedHost != null && reqHost == pairedHost && audioOnly.isNotEmpty()) {
+                        request.grant(audioOnly)
+                    } else {
+                        request.deny()
+                    }
                 }
             }
         }
@@ -99,7 +116,16 @@ class MainActivity : AppCompatActivity() {
             override fun shouldOverrideUrlLoading(
                 view: WebView?,
                 request: WebResourceRequest?
-            ): Boolean = false
+            ): Boolean {
+                val pairedHost = try {
+                    Uri.parse(Prefs.getUrl(this@MainActivity)).host?.lowercase()
+                } catch (_: Exception) {
+                    null
+                }
+                val targetHost = request?.url?.host?.lowercase()
+                // Eşleştirilmiş köprü adresi dışındaki harici sitelerin WebView içinde açılmasını engelle
+                return pairedHost != null && targetHost != null && targetHost != pairedHost
+            }
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 progress.visibility = View.VISIBLE
@@ -143,6 +169,14 @@ class MainActivity : AppCompatActivity() {
 
     fun triggerWakeOnLan(macToWake: String? = null) {
         val mac = if (!macToWake.isNullOrBlank()) macToWake else Prefs.getMac(this)
+        if (mac.isBlank()) {
+            Toast.makeText(
+                this,
+                "Kayıtlı MAC adresi bulunamadı. Lütfen PC ile QR eşleştirmesini yenileyin.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
         Toast.makeText(this, "Uyandırma paketi gönderiliyor ($mac)...", Toast.LENGTH_SHORT).show()
         
         thread {

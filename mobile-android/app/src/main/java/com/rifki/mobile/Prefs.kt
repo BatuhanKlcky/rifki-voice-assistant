@@ -10,7 +10,7 @@ object Prefs {
     private const val KEY_ONBOARDED = "onboarded"
     private const val KEY_MAC = "target_mac"
 
-    const val DEFAULT_MAC = "7C:8A:E1:AA:CA:F4"
+    const val DEFAULT_MAC = ""
 
     fun isPaired(context: Context): Boolean =
         getUrl(context).isNotEmpty() && getToken(context).isNotEmpty()
@@ -34,7 +34,7 @@ object Prefs {
 
     fun getMac(context: Context): String =
         context.getSharedPreferences(NAME, Context.MODE_PRIVATE)
-            .getString(KEY_MAC, DEFAULT_MAC)?.trim().orEmpty().ifEmpty { DEFAULT_MAC }
+            .getString(KEY_MAC, DEFAULT_MAC)?.trim().orEmpty()
 
     fun setMac(context: Context, mac: String) {
         if (mac.isBlank()) return

@@ -84,25 +84,23 @@ def organize_folder(folder_name: str = "downloads", *args, **kwargs) -> str:
     """
     İndirilenler (downloads) veya Masaüstü (desktop) klasöründeki dağınık dosyaları
     türlerine göre (Resimler, Belgeler, Arşivler, Kurulumlar) alt klasörlere taşır.
+    Güvenlik gereği yalnızca kullanıcının kendi Downloads ve Desktop dizinlerinde çalışır.
     """
-    user_home = Path(os.path.expanduser("~"))
+    user_home = Path(os.path.expanduser("~")).resolve()
     target_dir = None
 
-    low_name = folder_name.lower().strip()
+    low_name = (folder_name or "downloads").lower().strip()
     if any(k in low_name for k in ("indir", "download")):
         target_dir = user_home / "Downloads"
-    elif any(k in low_name for k in ("masaüstü", "desktop")):
+    elif any(k in low_name for k in ("masaüstü", "masaustu", "desktop")):
         target_dir = user_home / "Desktop"
-    elif os.path.isdir(folder_name):
-        target_dir = Path(folder_name)
     else:
-        target_dir = user_home / "Downloads"
+        return "Güvenlik politikası gereği yalnızca 'İndirilenler' veya 'Masaüstü' klasörü otomatik düzenlenebilir."
 
     if not target_dir.is_dir():
         return f"Hedef klasör bulunamadı: {target_dir}"
 
     moved_counts: dict[str, int] = {}
-    skipped = 0
 
     try:
         for item in list(target_dir.iterdir()):

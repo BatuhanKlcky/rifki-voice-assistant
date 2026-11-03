@@ -14,7 +14,15 @@ from core.logger import get_logger
 log = get_logger("bridge.remote")
 
 # Onay (confirm=true) olmadan çalışmaz
-_DANGEROUS = frozenset({"shutdown", "restart", "sleep"})
+_DANGEROUS = frozenset({
+    "shutdown",
+    "restart",
+    "sleep",
+    "empty_recycle_bin",
+    "organize_folder",
+})
+
+_MAX_TEXT_LEN = 4096
 
 
 def run_remote_action(action: str, body: dict | None = None) -> dict[str, Any]:
@@ -109,7 +117,7 @@ def _dispatch(action: str, body: dict) -> tuple[str, dict]:
 
     # Pano (Clipboard)
     if action == "set_clipboard":
-        text = str(body.get("text") or "")
+        text = str(body.get("text") or "")[:_MAX_TEXT_LEN]
         return system.set_clipboard_text(text), {}
     if action == "get_clipboard":
         clip = system.get_clipboard_text()
@@ -117,18 +125,18 @@ def _dispatch(action: str, body: dict) -> tuple[str, dict]:
 
     # Klavye tuşları & Metin yazma
     if action == "press_key":
-        key = str(body.get("key") or "")
+        key = str(body.get("key") or "")[:32]
         return system.send_key_stroke(key), {}
     if action == "type_text":
-        text = str(body.get("text") or "")
+        text = str(body.get("text") or "")[:_MAX_TEXT_LEN]
         return system.type_text_to_pc(text), {}
 
     # Arama ve URL
     if action == "search_google":
-        q = (body.get("query") or "").strip()
+        q = (body.get("query") or "").strip()[:512]
         return browser.open_google_search(q), {}
     if action == "search_youtube":
-        q = (body.get("query") or "").strip()
+        q = (body.get("query") or "").strip()[:512]
         return browser.open_youtube_search(q), {}
 
     if action == "open_url":
@@ -162,7 +170,9 @@ def _dispatch(action: str, body: dict) -> tuple[str, dict]:
         return desktop_automation.browser_tab_action(param), {}
     if action == "organize_folder":
         from tools import desktop_automation
-        folder = body.get("folder") or "downloads"
+        folder = str(body.get("folder") or "downloads").lower().strip()
+        if folder not in ("downloads", "indirilenler", "desktop", "masaustu", "masaüstü"):
+            raise ValueError("Yalnızca İndirilenler veya Masaüstü klasörü düzenlenebilir.")
         return desktop_automation.organize_folder(folder), {}
     if action == "empty_recycle_bin":
         from tools import desktop_automation
@@ -171,13 +181,13 @@ def _dispatch(action: str, body: dict) -> tuple[str, dict]:
     # Müzik (YouTube Music)
     if action == "play_youtube_music":
         from tools import media
-        q = body.get("query") or "lofi beats"
+        q = (body.get("query") or "lofi beats")[:256]
         return media.play_youtube_music(q), {}
 
     # Ekran Analizi (Vision AI) ve Görüntü
     if action in ("analyze_screen", "vision"):
         from tools import vision
-        q = body.get("question") or "Ekranda ne var? Detaylı incele."
+        q = (body.get("question") or "Ekranda ne var? Detaylı incele.")[:512]
         return vision.analyze_screen(q), {}
 
     if action in ("take_screenshot", "screenshot"):
