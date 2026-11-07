@@ -1,7 +1,7 @@
 """
 bridge/remote_actions.py
 ------------------------
-Mobil uzaktan kontrol aksiyonları (ses, medya, kilit, güç, URL, telemetri, pano, klavye).
+Mobil uzaktan kontrol aksiyonları (ses, medya, kilit, güç, URL, telemetri, pano, klavye, canlı touchpad fare kontrolü, oyun modu ve RAM optimizasyonu).
 """
 
 from __future__ import annotations
@@ -109,6 +109,39 @@ def _dispatch(action: str, body: dict) -> tuple[str, dict]:
         data = system.get_telemetry_dict()
         reply = f"CPU: %{data.get('cpu')} | RAM: %{data.get('ram')} | Disk: %{data.get('disk')}"
         return reply, {"telemetry": data}
+
+    # Oyun Modu & RAM Optimizasyonu
+    if action == "optimize_ram":
+        reply = system.optimize_system_ram()
+        return reply, {"telemetry": system.get_telemetry_dict()}
+    if action == "game_mode_toggle":
+        reply = system.toggle_game_mode()
+        return reply, {
+            "game_mode": system.is_game_mode_active(),
+            "telemetry": system.get_telemetry_dict(),
+        }
+    if action == "set_game_mode":
+        enabled = body.get("enabled", True)
+        reply = system.set_game_mode(enabled)
+        return reply, {
+            "game_mode": system.is_game_mode_active(),
+            "telemetry": system.get_telemetry_dict(),
+        }
+
+    # Canlı Touchpad (Fare Kontrolü)
+    if action == "mouse_move":
+        dx = int(body.get("dx") or 0)
+        dy = int(body.get("dy") or 0)
+        system.move_mouse_relative(dx, dy)
+        return "", {}
+    if action == "mouse_click":
+        btn = str(body.get("button") or body.get("btn") or "left")
+        system.mouse_click(btn)
+        return "", {}
+    if action == "mouse_scroll":
+        dy = int(body.get("dy") or 0)
+        system.mouse_scroll(dy)
+        return "", {}
 
     # Klasör açma
     if action == "open_folder":

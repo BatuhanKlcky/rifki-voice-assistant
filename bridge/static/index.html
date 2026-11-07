@@ -7,14 +7,14 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>RIFKI Siber Kokpit</title>
-  <link rel="stylesheet" href="/static/style.css?v=2.4.0" />
+  <link rel="stylesheet" href="/static/style.css?v=2.6.0" />
 </head>
 <body>
   <!-- Top Cockpit Bar -->
   <header class="top-bar">
     <div class="brand">
       <div class="kicker-row">
-        <span class="brand-tag">SYS.2.5</span>
+        <span class="brand-tag">SYS.2.6</span>
         <span class="brand-sub">NEON HUD</span>
       </div>
       <h1 class="brand-title">RIFKI <span>// SİBER KÖPRÜ</span></h1>
@@ -105,6 +105,8 @@
       <!-- Quick Chips -->
       <div class="quick-chips">
         <button type="button" class="chip" data-cmd="durum raporu ver">📊 Rapor Ver</button>
+        <button type="button" class="chip" data-cmd="oyun moduna geç">🎮 Oyun Modu</button>
+        <button type="button" class="chip" data-cmd="ram temizle">🚀 RAM Temizle</button>
         <button type="button" class="chip" data-cmd="ekrana bak">👁️ Ekrana Bak</button>
         <button type="button" class="chip" data-cmd="ekran görüntüsü al">📸 Ekran Al</button>
         <button type="button" class="chip" data-cmd="sesi yüzde elli yap">🔊 Ses %50</button>
@@ -125,6 +127,60 @@
 
     <!-- TAB 2: UZAKTAN KONTROL & DONANIM -->
     <section id="remoteDeck" class="deck-pane" role="tabpanel">
+      <!-- Oyun & Performans Booster -->
+      <div class="card" style="border-color: rgba(61, 255, 176, 0.35);">
+        <div class="card-head">
+          <h3>🎮 Oyun & Performans Booster</h3>
+          <span class="pill" id="gameModePill">Standart Mod</span>
+        </div>
+        <div class="btn-row wrap">
+          <button type="button" class="btn-sub primary" id="btnGameModeToggle">🎮 Oyun Modunu Aç</button>
+          <button type="button" class="btn-sub" id="btnRamBoost">🚀 RAM Temizle & Hızlandır</button>
+        </div>
+        <div class="card-hint">Yüksek Performans güç planını açar, arka plan RAM önbelleğini boşaltır ve Rıfkı HUD yükünü sıfırlar.</div>
+      </div>
+
+      <!-- Canlı Siber Touchpad (Fare Kontrolü) -->
+      <div class="card">
+        <div class="card-head">
+          <h3>🖱️ Siber Touchpad (PC Fare)</h3>
+          <span class="pill" id="touchSensLabel">Hız: 1.6x</span>
+        </div>
+        <div class="touchpad-surface" id="touchpadSurface">
+          <div class="touchpad-crosshair">
+            [ DOKUN & SÜRÜKLE // FARE ]<br/>
+            <span style="font-size:10px; opacity:0.75;">Tek Dokunuş: Sol Tık · Çift Parmak: Sağ Tık</span>
+          </div>
+          <div class="touchpad-dot" id="touchpadDot"></div>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn-sub primary" data-action="mouse_click" data-param="button:left">🖱️ Sol Tık</button>
+          <button type="button" class="btn-sub" data-action="mouse_click" data-param="button:double">⚡ Çift Tık</button>
+          <button type="button" class="btn-sub" data-action="mouse_click" data-param="button:right">🖱️ Sağ Tık</button>
+          <button type="button" class="btn-sub" data-action="mouse_scroll" data-param="dy:3" title="Yukarı Kaydır">▲</button>
+          <button type="button" class="btn-sub" data-action="mouse_scroll" data-param="dy:-3" title="Aşağı Kaydır">▼</button>
+        </div>
+        <div class="slider-row" style="margin-top:8px;">
+          <span style="font-size:11px; color:var(--muted);">Hassasiyet</span>
+          <input type="range" id="touchSensSlider" min="6" max="35" value="16" class="cyber-slider" />
+        </div>
+      </div>
+
+      <!-- Kablosuz AirDrop (Telefon ⇄ PC Dosya Aktarımı) -->
+      <div class="card">
+        <div class="card-head">
+          <h3>📲 Kablosuz AirDrop (Telefon ⇄ PC)</h3>
+          <button type="button" class="btn-ghost" id="btnRefreshAirdrop" style="padding:3px 8px; font-size:11px;">🔄 Yenile</button>
+        </div>
+        <input type="file" id="airdropInput" multiple hidden />
+        <div class="btn-row wrap">
+          <button type="button" class="btn-sub primary" id="btnPickAirdrop">📤 Telefondan PC'ye Dosya / Fotoğraf Gönder</button>
+          <button type="button" class="btn-sub" data-action="open_folder" data-param="folder:airdrop">📂 PC'de Klasörü Aç</button>
+        </div>
+        <div id="airdropStatus" class="card-hint" style="margin-top:6px;">Dosyalar PC'de İndirilenler/RIFKI_AirDrop klasörüne kaydedilir.</div>
+        <ul id="airdropList" class="airdrop-list"></ul>
+      </div>
+
       <!-- Ses Kontrolü -->
       <div class="card">
         <div class="card-head">
@@ -395,6 +451,6 @@
     <p class="lightbox-hint">Kapatmak için dokunun</p>
   </div>
 
-  <script src="/static/app.js?v=2.5.0"></script>
+  <script src="/static/app.js?v=2.6.0"></script>
 </body>
 </html>

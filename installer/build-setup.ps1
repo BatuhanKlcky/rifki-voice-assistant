@@ -1,13 +1,23 @@
-# RIFKI Setup.exe uretir (Inno Setup gerekli).
-# Once: dist\RIFKI\RIFKI.exe olmali (PyInstaller).
+# RIFKI Setup.exe uretir (PyInstaller + Inno Setup).
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Split-Path -Parent $here
-Set-Location $here
+Set-Location $root
 
+Stop-Process -Name "RIFKI" -Force -ErrorAction SilentlyContinue
+Write-Host "Building PyInstaller bundle (rifki.spec)..."
+$pyi = Join-Path $root "venv\Scripts\pyinstaller.exe"
+if (Test-Path $pyi) {
+    & $pyi --noconfirm rifki.spec
+} else {
+    pyinstaller --noconfirm rifki.spec
+}
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+Set-Location $here
 $exe = Join-Path $root "dist\RIFKI\RIFKI.exe"
 if (-not (Test-Path $exe)) {
-    Write-Error "Once PyInstaller calistir: dist\RIFKI\RIFKI.exe yok. (pyinstaller rifki.spec)"
+    Write-Error "dist\RIFKI\RIFKI.exe olusturulamadi."
     exit 1
 }
 
@@ -28,13 +38,7 @@ function Find-ISCC {
 
 $iscc = Find-ISCC
 if (-not $iscc) {
-    Write-Host "Inno Setup 6 bulunamadi. Portable indiriliyor..."
-    $zipUrl = "https://jrsoftware.org/download.php/is.exe"
-    # Offline: kullaniciya net mesaj
-    Write-Host ""
     Write-Host "Inno Setup 6 kurun: https://jrsoftware.org/isdl.php"
-    Write-Host "Kurulumdan sonra bu scripti tekrar calistirin."
-    Write-Host "Veya ISCC.exe yolunu PATH'e ekleyin."
     exit 1
 }
 
@@ -42,7 +46,7 @@ Write-Host "ISCC: $iscc"
 & $iscc "rifki.iss"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$out = Join-Path $root "dist\RIFKI-Setup-2.5.0.exe"
+$out = Join-Path $root "dist\RIFKI-Setup-2.6.0.exe"
 if (Test-Path $out) {
     Write-Host "OK: $out"
 } else {

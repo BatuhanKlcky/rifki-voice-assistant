@@ -1,15 +1,19 @@
 """
 bridge/service.py
 -----------------
-Yerel aiohttp sunucusu: mobil PWA, durum API'si, komut POST, WebSocket.
-Dışarıya doğrudan açılmaz (127.0.0.1); Cloudflare Tunnel bağlanır.
+Yerel aiohttp sunucusu: mobil PWA, durum API'si, komut POST, WebSocket,
+Canlı Touchpad (WS düşük gecikmeli fare kontrolü) ve Kablosuz AirDrop (Telefon ⇄ PC dosya aktarımı).
+Dışarıya doğrudan açılmaz (127.0.0.1 / LAN); Cloudflare Tunnel bağlanır.
 """
 
 from __future__ import annotations
 
 import asyncio
 from collections import deque
+import datetime
 import json
+import os
+import re
 import secrets
 import threading
 import time
@@ -26,13 +30,13 @@ CommandHandler = Callable[[str], str]
 _AUTH_WINDOW_SECONDS = 60.0
 _AUTH_MAX_FAILURES = 10
 _AUTH_LOCKOUT_SECONDS = 300.0
+_SAFE_FILENAME_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 
 def _static_dir() -> Path:
     here = Path(__file__).resolve().parent / "static"
     if here.is_dir():
         return here
-    # PyInstaller: bridge/static _MEIPASS altında
     import sys
 
     if getattr(sys, "frozen", False):
@@ -41,6 +45,21 @@ def _static_dir() -> Path:
         if candidate.is_dir():
             return candidate
     return here
+
+
+def _airdrop_dir() -> Path:
+    """Telefondan gelen ve telefona paylaşılacak dosyalar için güvenli klasör."""
+    d = Path.home() / "Downloads" / "RIFKI_AirDrop"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _sanitize_filename(name: str) -> str:
+    clean = Path(name or "dosya").name
+    clean = _SAFE_FILENAME_RE.sub("_", clean).strip(". ")
+    if not clean:
+        clean = f"airdrop_{int(time.time())}.bin"
+    return clean[:180]
 
 
 class MobileBridge:
@@ -190,7 +209,11 @@ class MobileBridge:
             return resp
 
         self._loop = asyncio.get_running_loop()
-        app = web.Application(middlewares=[_security_and_cache_headers], client_max_size=2 * 1024 * 1024)
+        # 100 MB max upload size for Wireless AirDrop file/photo transfers
+        app = web.Application(
+            middlewares=[_security_and_cache_headers],
+            client_max_size=100 * 1024 * 1024,
+        )
         app.router.add_get("/", self._handle_index)
         app.router.add_get("/api/status", self._handle_status)
         app.router.add_post("/api/command", self._handle_command)
@@ -202,6 +225,9 @@ class MobileBridge:
         app.router.add_get("/api/telemetry", self._handle_telemetry)
         app.router.add_get("/api/tts", self._handle_tts)
         app.router.add_post("/api/vision", self._handle_vision)
+        app.router.add_get("/api/transfer/list", self._handle_transfer_list)
+        app.router.add_post("/api/transfer/upload", self._handle_transfer_upload)
+        app.router.add_get("/api/transfer/download", self._handle_transfer_download)
         app.router.add_get("/ws", self._handle_ws)
         static = _static_dir()
         if static.is_dir():
@@ -409,8 +435,7 @@ class MobileBridge:
             None, lambda: run_remote_action(action, body)
         )
         if not result.get("ok"):
-            status = 400
-            return web.json_response(result, status=status)
+            return web.json_response(result, status=400)
 
         reply = result.get("reply") or ""
         label = {
@@ -428,9 +453,10 @@ class MobileBridge:
             "restart": "Yeniden başlat",
             "open_url": "URL aç",
             "cancel_shutdown": "Kapatmayı iptal",
+            "game_mode_toggle": "🎮 Oyun Modu",
+            "optimize_ram": "🚀 RAM Optimizasyonu",
         }.get(action, action)
-        # Güç işlemlerini sohbette göster; sık ses/medya spam olmasın
-        if action in ("lock", "sleep", "shutdown", "restart", "open_url", "cancel_shutdown"):
+        if action in ("lock", "sleep", "shutdown", "restart", "open_url", "cancel_shutdown", "game_mode_toggle", "optimize_ram"):
             self.publish_user(label)
             if reply:
                 self.publish_assistant(reply)
@@ -508,7 +534,6 @@ class MobileBridge:
         name = (body.get("name") or body.get("path") or "").strip()
         if not name:
             return web.json_response({"error": "uygulama adı gerekli"}, status=400)
-        # Ham yol / AppID kabul etme — yalnızca katalog adı
         if any(ch in name for ch in ("\\", "/", ":", ";", "|")) or len(name) > 120:
             return web.json_response({"error": "geçersiz uygulama adı"}, status=400)
         loop = asyncio.get_running_loop()
@@ -541,8 +566,122 @@ class MobileBridge:
             log.error(f"Vision API hatası: {e}")
             return web.json_response({"ok": False, "error": str(e)}, status=500)
 
+    # =====================================================================
+    # 📲 KABLOSUZ AIRDROP (TELEFON ⇄ PC DOSYA/FOTOĞRAF AKTARIMI)
+    # =====================================================================
+    @staticmethod
+    def _collect_airdrop_files() -> list[dict]:
+        folder = _airdrop_dir()
+        items: list[dict] = []
+        try:
+            for f in sorted(folder.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+                if not f.is_file() or f.name.startswith("."):
+                    continue
+                st = f.stat()
+                items.append({
+                    "name": f.name,
+                    "size": st.st_size,
+                    "mtime": datetime.datetime.fromtimestamp(st.st_mtime).strftime("%d.%m %H:%M"),
+                })
+                if len(items) >= 30:
+                    break
+        except Exception as e:
+            log.warning(f"AirDrop dosya listeleme hatası: {e}")
+        return items
+
+    async def _handle_transfer_list(self, request):
+        from aiohttp import web
+        if not self._token_ok(request):
+            return web.json_response({"error": "yetkisiz"}, status=401)
+        loop = asyncio.get_running_loop()
+        files = await loop.run_in_executor(None, self._collect_airdrop_files)
+        return web.json_response({
+            "ok": True,
+            "folder": str(_airdrop_dir()),
+            "files": files,
+        })
+
+    async def _handle_transfer_upload(self, request):
+        from aiohttp import web
+        if not self._token_ok(request):
+            return web.json_response({"error": "yetkisiz"}, status=401)
+
+        folder = _airdrop_dir()
+        saved_files: list[str] = []
+        try:
+            reader = await request.multipart()
+            while True:
+                part = await reader.next()
+                if part is None:
+                    break
+                if part.filename:
+                    safe_name = _sanitize_filename(part.filename)
+                    dest = folder / safe_name
+                    counter = 1
+                    stem = dest.stem
+                    ext = dest.suffix
+                    while dest.exists():
+                        dest = folder / f"{stem}_{counter}{ext}"
+                        counter += 1
+                    with open(dest, "wb") as out:
+                        while True:
+                            chunk = await part.read_chunk(256 * 1024)
+                            if not chunk:
+                                break
+                            out.write(chunk)
+                    saved_files.append(dest.name)
+                    log.info(f"AirDrop ile telefondan dosya alındı: {dest}")
+        except Exception as e:
+            log.error(f"AirDrop dosya yükleme hatası: {e}")
+            return web.json_response({"ok": False, "error": f"Yükleme başarısız: {e}"}, status=400)
+
+        if not saved_files:
+            return web.json_response({"ok": False, "error": "Dosya seçilmedi."}, status=400)
+
+        names_str = ", ".join(saved_files)
+        msg = f"📲 Telefondan {len(saved_files)} dosya PC'ye aktarıldı ({names_str}) → İndirilenler/RIFKI_AirDrop"
+        self.publish_user(f"📲 AirDrop Gönderimi: {names_str}")
+        self.publish_assistant(msg)
+        try:
+            from tools.notifications import send_notification
+            send_notification("RIFKI AirDrop", f"Telefondan dosya alındı: {names_str}")
+        except Exception:
+            pass
+
+        loop = asyncio.get_running_loop()
+        files = await loop.run_in_executor(None, self._collect_airdrop_files)
+        return web.json_response({
+            "ok": True,
+            "saved": saved_files,
+            "reply": msg,
+            "files": files,
+        })
+
+    async def _handle_transfer_download(self, request):
+        from aiohttp import web
+        if not self._token_ok(request):
+            return web.Response(text="yetkisiz", status=401)
+
+        raw_name = (request.rel_url.query.get("name") or "").strip()
+        if not raw_name or any(sep in raw_name for sep in ("/", "\\", "..")):
+            return web.Response(text="geçersiz dosya adı", status=400)
+
+        folder = _airdrop_dir().resolve()
+        target = (folder / raw_name).resolve()
+        if target.parent != folder or not target.is_file():
+            return web.Response(text="dosya bulunamadı", status=404)
+
+        return web.FileResponse(
+            target,
+            headers={
+                "Content-Disposition": f'attachment; filename="{target.name}"',
+                "Cache-Control": "no-store",
+            },
+        )
+
     async def _handle_ws(self, request):
         from aiohttp import WSMsgType, web
+        from tools import system
 
         if not self._token_ok(request):
             return web.Response(text="yetkisiz", status=401)
@@ -557,8 +696,15 @@ class MobileBridge:
                         data = json.loads(msg.data)
                     except json.JSONDecodeError:
                         continue
-                    if data.get("type") == "ping":
+                    mtype = data.get("type")
+                    if mtype == "ping":
                         await ws.send_str(json.dumps({"type": "pong"}))
+                    elif mtype == "mouse_move":
+                        system.move_mouse_relative(int(data.get("dx") or 0), int(data.get("dy") or 0))
+                    elif mtype == "mouse_click":
+                        system.mouse_click(str(data.get("button") or "left"))
+                    elif mtype == "mouse_scroll":
+                        system.mouse_scroll(int(data.get("dy") or 0))
                 elif msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
                     break
         finally:

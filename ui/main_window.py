@@ -496,6 +496,9 @@ class MainWindow(QWidget):
         self._desktop_timer.timeout.connect(self._keep_behind_windows)
         self._desktop_timer.start(2500)
 
+        from tools.system import register_game_mode_callback
+        register_game_mode_callback(self._notify_game_mode_from_thread)
+
         self._ascii_timer = QTimer(self)
         self._ascii_timer.timeout.connect(self.update)
         self._ascii_timer.start(45)  # ~22 FPS akıcı ve hafif animasyon
@@ -1190,16 +1193,78 @@ class MainWindow(QWidget):
             "QPushButton:hover { background-color: rgba(14, 56, 80, 240); border-color: #3DFFB0; color: #3DFFB0; }"
         )
         self.btn_vision.clicked.connect(self._run_vision_ai)
+
+        self.btn_game_mode = QPushButton("🎮 OYUN MODU")
+        self.btn_game_mode.setCursor(Qt.PointingHandCursor)
+        self.btn_game_mode.setToolTip("Yüksek Performans Güç Planı + RAM Temizliği + Düşük GPU/CPU Eco HUD")
+        self.btn_game_mode.clicked.connect(self._toggle_game_mode_ui)
+        self._style_game_mode_button(False)
+
+        self.btn_ram_boost = QPushButton("🚀 RAM TEMİZLE")
+        self.btn_ram_boost.setCursor(Qt.PointingHandCursor)
+        self.btn_ram_boost.setToolTip("Arka plan uygulamalarının RAM önbelleğini güvenli şekilde boşaltır")
+        self.btn_ram_boost.setStyleSheet(
+            "QPushButton { background-color: rgba(6, 22, 36, 200); color: #7FD8FF; "
+            "border: 1px solid #1C3854; padding: 6px 12px; font-family: Consolas; "
+            "font-size: 11px; font-weight: bold; letter-spacing: 1px; border-radius: 4px; }"
+            "QPushButton:hover { background-color: rgba(14, 48, 74, 230); border-color: #3DFFB0; color: #3DFFB0; }"
+        )
+        self.btn_ram_boost.clicked.connect(self._run_ram_boost_ui)
         
         btn_row = QHBoxLayout()
         btn_row.setSpacing(6)
         btn_row.addWidget(self.btn_spotlight)
         btn_row.addWidget(self.btn_vision)
+        btn_row.addWidget(self.btn_game_mode)
+        btn_row.addWidget(self.btn_ram_boost)
         action.addLayout(btn_row)
         action.addWidget(self.toggle_button)
         action.addWidget(serial)
         bottom.addLayout(action)
         return bottom
+
+    def _style_game_mode_button(self, active: bool):
+        if not hasattr(self, "btn_game_mode"):
+            return
+        if active:
+            self.btn_game_mode.setText("🎮 OYUN MODU: AKTİF")
+            self.btn_game_mode.setStyleSheet(
+                "QPushButton { background-color: rgba(10, 52, 36, 235); color: #3DFFB0; "
+                "border: 1px solid #3DFFB0; padding: 6px 12px; font-family: Consolas; "
+                "font-size: 11px; font-weight: bold; letter-spacing: 1px; border-radius: 4px; }"
+                "QPushButton:hover { background-color: rgba(16, 72, 50, 245); }"
+            )
+        else:
+            self.btn_game_mode.setText("🎮 OYUN MODU")
+            self.btn_game_mode.setStyleSheet(
+                "QPushButton { background-color: rgba(6, 22, 36, 200); color: #FFB020; "
+                "border: 1px solid #4A3810; padding: 6px 12px; font-family: Consolas; "
+                "font-size: 11px; font-weight: bold; letter-spacing: 1px; border-radius: 4px; }"
+                "QPushButton:hover { background-color: rgba(38, 28, 8, 230); border-color: #FFB020; }"
+            )
+
+    def _notify_game_mode_from_thread(self, active: bool):
+        QMetaObject.invokeMethod(
+            self, "_apply_game_mode_hud", Qt.QueuedConnection, Q_ARG(bool, bool(active))
+        )
+
+    @pyqtSlot(bool)
+    def _apply_game_mode_hud(self, active: bool):
+        self._style_game_mode_button(active)
+        if hasattr(self, "_ascii_timer"):
+            self._ascii_timer.setInterval(250 if active else 45)
+
+    def _toggle_game_mode_ui(self):
+        from tools.system import toggle_game_mode
+        msg = toggle_game_mode()
+        self.on_assistant_message(msg)
+        self._update_stats()
+
+    def _run_ram_boost_ui(self):
+        from tools.system import optimize_system_ram
+        msg = optimize_system_ram()
+        self.on_assistant_message(msg)
+        self._update_stats()
 
     def _run_vision_ai(self):
         """Kullanıcı butona bastığında ekranı analiz eder ve hem HUD'a yazar hem seslendirir."""

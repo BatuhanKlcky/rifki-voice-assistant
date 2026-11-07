@@ -539,6 +539,9 @@ async function fetchStatus() {
       if (clockVal && data.time) {
         clockVal.textContent = data.time.substring(0, 5);
       }
+      if (typeof data.game_mode === "boolean") {
+        updateGameModeUI(data.game_mode);
+      }
     } catch (_) {}
   }
 
@@ -718,6 +721,14 @@ async function fetchStatus() {
       if (!text) return;
       if (cmd) cmd.value = text;
 
+      if (text.includes("oyun modu")) {
+        callRemote("game_mode_toggle");
+        return;
+      }
+      if (text.includes("ram temizle")) {
+        callRemote("optimize_ram");
+        return;
+      }
       if (text.includes("ekrana bak")) {
         runVisionAnalysis();
         return;
@@ -739,6 +750,271 @@ async function fetchStatus() {
     });
   });
 
+
+  // =========================================================================
+  // 4B. OYUN MODU, SİBER TOUCHPAD & KABLOSUZ AIRDROP (v2.6.0)
+  // =========================================================================
+  const btnGameModeToggle = document.getElementById("btnGameModeToggle");
+  const btnRamBoost = document.getElementById("btnRamBoost");
+  const gameModePill = document.getElementById("gameModePill");
+
+  function updateGameModeUI(active) {
+    if (gameModePill) {
+      gameModePill.textContent = active ? "⚡ OYUN MODU AKTİF" : "Standart Mod";
+      gameModePill.style.color = active ? "#3dffb0" : "";
+      gameModePill.style.borderColor = active ? "#3dffb0" : "";
+    }
+    if (btnGameModeToggle) {
+      btnGameModeToggle.textContent = active ? "🎮 Oyun Modu: AÇIK (Kapat)" : "🎮 Oyun Modunu Aç";
+      btnGameModeToggle.classList.toggle("game-btn-active", !!active);
+    }
+  }
+
+  if (btnGameModeToggle) {
+    btnGameModeToggle.addEventListener("click", async () => {
+      const data = await callRemote("game_mode_toggle");
+      if (data && typeof data.game_mode === "boolean") {
+        updateGameModeUI(data.game_mode);
+      }
+    });
+  }
+
+  if (btnRamBoost) {
+    btnRamBoost.addEventListener("click", async () => {
+      btnRamBoost.disabled = true;
+      btnRamBoost.textContent = "🚀 Temizleniyor…";
+      await callRemote("optimize_ram");
+      btnRamBoost.disabled = false;
+      btnRamBoost.textContent = "🚀 RAM Temizle & Hızlandır";
+    });
+  }
+
+  // Siber Touchpad (Canlı PC Fare Kontrolü)
+  const touchpadSurface = document.getElementById("touchpadSurface");
+  const touchpadDot = document.getElementById("touchpadDot");
+  const touchSensSlider = document.getElementById("touchSensSlider");
+  const touchSensLabel = document.getElementById("touchSensLabel");
+  let touchSens = 1.6;
+
+  if (touchSensSlider) {
+    touchSensSlider.addEventListener("input", () => {
+      touchSens = parseInt(touchSensSlider.value, 10) / 10.0;
+      if (touchSensLabel) touchSensLabel.textContent = `Hız: ${touchSens.toFixed(1)}x`;
+    });
+  }
+
+  function sendMouseMove(dx, dy) {
+    if (!dx && !dy) return;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "mouse_move", dx, dy }));
+    } else {
+      callRemote("mouse_move", { dx, dy });
+    }
+  }
+
+  function sendMouseClick(button) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "mouse_click", button }));
+    } else {
+      callRemote("mouse_click", { button });
+    }
+  }
+
+  if (touchpadSurface) {
+    let tpActive = false;
+    let lastX = 0;
+    let lastY = 0;
+    let startTime = 0;
+    let totalMove = 0;
+    let maxTouches = 1;
+    let accumX = 0;
+    let accumY = 0;
+
+    const showDot = (clientX, clientY) => {
+      if (!touchpadDot) return;
+      const rect = touchpadSurface.getBoundingClientRect();
+      touchpadDot.style.left = `${clientX - rect.left}px`;
+      touchpadDot.style.top = `${clientY - rect.top}px`;
+      touchpadDot.style.opacity = "1";
+    };
+
+    const hideDot = () => {
+      if (touchpadDot) touchpadDot.style.opacity = "0";
+      touchpadSurface.classList.remove("active");
+    };
+
+    touchpadSurface.addEventListener("touchstart", (e) => {
+      e.preventDefault();
+      tpActive = true;
+      touchpadSurface.classList.add("active");
+      const t = e.touches[0];
+      lastX = t.clientX;
+      lastY = t.clientY;
+      startTime = performance.now();
+      totalMove = 0;
+      maxTouches = Math.max(1, e.touches.length);
+      accumX = 0;
+      accumY = 0;
+      showDot(t.clientX, t.clientY);
+    }, { passive: false });
+
+    touchpadSurface.addEventListener("touchmove", (e) => {
+      if (!tpActive) return;
+      e.preventDefault();
+      if (e.touches.length > maxTouches) maxTouches = e.touches.length;
+      const t = e.touches[0];
+      const rawDx = (t.clientX - lastX) * touchSens;
+      const rawDy = (t.clientY - lastY) * touchSens;
+      lastX = t.clientX;
+      lastY = t.clientY;
+      totalMove += Math.abs(rawDx) + Math.abs(rawDy);
+      accumX += rawDx;
+      accumY += rawDy;
+      const sendDx = Math.trunc(accumX);
+      const sendDy = Math.trunc(accumY);
+      if (sendDx !== 0 || sendDy !== 0) {
+        accumX -= sendDx;
+        accumY -= sendDy;
+        sendMouseMove(sendDx, sendDy);
+      }
+      showDot(t.clientX, t.clientY);
+    }, { passive: false });
+
+    touchpadSurface.addEventListener("touchend", (e) => {
+      e.preventDefault();
+      if (!tpActive) return;
+      if (e.touches.length === 0) {
+        tpActive = false;
+        hideDot();
+        const elapsed = performance.now() - startTime;
+        if (elapsed < 240 && totalMove < 12) {
+          sendMouseClick(maxTouches >= 2 ? "right" : "left");
+        }
+      }
+    }, { passive: false });
+
+    // Masaüstü fare ile test desteği
+    touchpadSurface.addEventListener("mousedown", (e) => {
+      tpActive = true;
+      touchpadSurface.classList.add("active");
+      lastX = e.clientX;
+      lastY = e.clientY;
+      startTime = performance.now();
+      totalMove = 0;
+      showDot(e.clientX, e.clientY);
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!tpActive || e.touches) return;
+      const dx = Math.round((e.clientX - lastX) * touchSens);
+      const dy = Math.round((e.clientY - lastY) * touchSens);
+      lastX = e.clientX;
+      lastY = e.clientY;
+      totalMove += Math.abs(dx) + Math.abs(dy);
+      if (dx !== 0 || dy !== 0) sendMouseMove(dx, dy);
+      showDot(e.clientX, e.clientY);
+    });
+    window.addEventListener("mouseup", () => {
+      if (!tpActive) return;
+      tpActive = false;
+      hideDot();
+    });
+  }
+
+  // Kablosuz AirDrop (Telefon ⇄ PC Dosya Aktarımı)
+  const airdropInput = document.getElementById("airdropInput");
+  const btnPickAirdrop = document.getElementById("btnPickAirdrop");
+  const btnRefreshAirdrop = document.getElementById("btnRefreshAirdrop");
+  const airdropStatus = document.getElementById("airdropStatus");
+  const airdropList = document.getElementById("airdropList");
+
+  function formatBytes(bytes) {
+    if (!bytes || bytes < 1024) return `${bytes || 0} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  }
+
+  function renderAirdropFiles(files) {
+    if (!airdropList) return;
+    airdropList.innerHTML = "";
+    if (!files || files.length === 0) {
+      const empty = document.createElement("li");
+      empty.className = "card-hint";
+      empty.textContent = "Henüz paylaşılan dosya yok.";
+      airdropList.appendChild(empty);
+      return;
+    }
+    files.forEach((f) => {
+      const li = document.createElement("li");
+      li.className = "airdrop-item";
+      const dlUrl = `/api/transfer/download?name=${encodeURIComponent(f.name)}&token=${encodeURIComponent(token)}`;
+      li.innerHTML = `
+        <div class="airdrop-info">
+          <span class="airdrop-name">${escapeHtml(f.name)}</span>
+          <span class="airdrop-meta">${formatBytes(f.size)} · ${escapeHtml(f.mtime || "")}</span>
+        </div>
+        <a class="airdrop-dl" href="${dlUrl}" download="${escapeHtml(f.name)}">⬇️ İndir</a>
+      `;
+      airdropList.appendChild(li);
+    });
+  }
+
+  async function loadAirdropFiles() {
+    if (!token) return;
+    try {
+      const res = await fetch("/api/transfer/list", { headers: authHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && data.ok) {
+        renderAirdropFiles(data.files || []);
+      }
+    } catch (_) {}
+  }
+
+  if (btnPickAirdrop && airdropInput) {
+    btnPickAirdrop.addEventListener("click", () => airdropInput.click());
+    airdropInput.addEventListener("change", async () => {
+      const files = airdropInput.files;
+      if (!files || files.length === 0) return;
+      const formData = new FormData();
+      for (let i = 0; i < files.length; i++) {
+        formData.append("file", files[i]);
+      }
+      if (airdropStatus) {
+        airdropStatus.textContent = `⏳ ${files.length} dosya PC'ye gönderiliyor, lütfen bekleyin…`;
+        airdropStatus.style.color = "#ffb020";
+      }
+      btnPickAirdrop.disabled = true;
+      try {
+        const res = await fetch("/api/transfer/upload", {
+          method: "POST",
+          headers: authHeaders(),
+          body: formData,
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || "Dosya gönderilemedi.");
+        }
+        if (airdropStatus) {
+          airdropStatus.textContent = `✅ ${data.saved.length} dosya PC'ye aktarıldı (İndirilenler/RIFKI_AirDrop).`;
+          airdropStatus.style.color = "#3dffb0";
+        }
+        renderAirdropFiles(data.files || []);
+      } catch (err) {
+        if (airdropStatus) {
+          airdropStatus.textContent = `❌ Hata: ${err.message}`;
+          airdropStatus.style.color = "#ff6b6b";
+        }
+        appendMsg("error", "AirDrop Hatası: " + err.message);
+      } finally {
+        btnPickAirdrop.disabled = false;
+        airdropInput.value = "";
+      }
+    });
+  }
+
+  if (btnRefreshAirdrop) {
+    btnRefreshAirdrop.addEventListener("click", loadAirdropFiles);
+  }
 
   // =========================================================================
   // VISION AI (Görsel Analiz)
@@ -930,6 +1206,9 @@ async function fetchStatus() {
 
       if (targetId === "appsDeck" && appsCache.length === 0) {
         loadApps();
+      }
+      if (targetId === "remoteDeck") {
+        loadAirdropFiles();
       }
       if (targetId === "visionDeck" && !liveImg.src) {
         refreshLive();

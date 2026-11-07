@@ -142,8 +142,27 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "get_system_status",
-        "description": "CPU, RAM ve disk kullanımını özetler.",
+        "description": "CPU, RAM, disk kullanımını ve Oyun Modu durumunu özetler.",
         "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "optimize_system_ram",
+        "description": "Bilgisayarın RAM belleğini temizler, arka planda atıl duran önbelleği (working set) boşaltır ve sistemi hızlandırır. 'RAM temizle', 'belleği boşalt', 'bilgisayarı hızlandır', 'donmayı azalt' isteklerinde çağrılır.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "set_game_mode",
+        "description": "Oyun ve Yüksek Performans Modunu açar veya kapatır. Açıldığında Windows Yüksek Performans güç planına geçer, RAM belleği temizler ve Rıfkı arayüzünü düşük tüketim (Eco HUD) moduna alır. 'oyun moduna geç', 'oyun modunu aç', 'performans modunu aç', 'oyun modunu kapat' komutlarında çağrılır.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "description": "True ise oyun modunu açar, False ise kapatır.",
+                }
+            },
+            "required": ["enabled"],
+        },
     },
     {
         "name": "get_datetime",
@@ -368,6 +387,8 @@ TOOL_DISPATCH = {
     "delete_file": filesystem.delete_file,
     "open_path": filesystem.open_path,
     "get_system_status": system.get_system_status,
+    "optimize_system_ram": system.optimize_system_ram,
+    "set_game_mode": system.set_game_mode,
     "get_datetime": system.get_datetime,
     "set_volume": system.set_volume,
     "take_screenshot": system.take_screenshot,
@@ -412,7 +433,6 @@ def execute_tool(
             return "İşlemi onaylamadığın için gerçekleştirmedim."
 
     try:
-                # Modelin g?nderdi?i ?ema d??? ekstra arg?manlar? g?venle filtrele
         sig = inspect.signature(fn)
         has_kwargs = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
         safe_kwargs = tool_input if has_kwargs else {k: v for k, v in tool_input.items() if k in sig.parameters}

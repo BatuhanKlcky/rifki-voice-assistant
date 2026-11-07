@@ -1,17 +1,44 @@
 """
 tools/system.py
 ----------------
-İşletim sistemi kontrol araçları (kapanma, yeniden başlatma, sistem durumu, ses, tarih ve ekran görüntüsü).
+İşletim sistemi kontrol araçları (kapanma, yeniden başlatma, sistem durumu, ses, tarih, ekran görüntüsü, fare/touchpad kontrolü, RAM temizliği ve Oyun/Performans Modu).
 """
 
+import ctypes
+import datetime
+import gc
 import os
 import platform
 import subprocess
-import datetime
+import time
 from pathlib import Path
+from typing import Callable, Optional
 from core.logger import get_logger
 
 log = get_logger("tools.system")
+
+_GAME_MODE_ACTIVE: bool = False
+_GAME_MODE_CALLBACK: Optional[Callable[[bool], None]] = None
+
+# Win32 Mouse Event Flags
+MOUSEEVENTF_MOVE = 0x0001
+MOUSEEVENTF_LEFTDOWN = 0x0002
+MOUSEEVENTF_LEFTUP = 0x0004
+MOUSEEVENTF_RIGHTDOWN = 0x0008
+MOUSEEVENTF_RIGHTUP = 0x0010
+MOUSEEVENTF_MIDDLEDOWN = 0x0020
+MOUSEEVENTF_MIDDLEUP = 0x0040
+MOUSEEVENTF_WHEEL = 0x0800
+
+
+def register_game_mode_callback(cb: Optional[Callable[[bool], None]]) -> None:
+    """Masaüstü HUD penceresinin Oyun Modu değişimlerini dinlemesi için callback kaydeder."""
+    global _GAME_MODE_CALLBACK
+    _GAME_MODE_CALLBACK = cb
+
+
+def is_game_mode_active() -> bool:
+    return _GAME_MODE_ACTIVE
 
 
 def get_system_status(*args, **kwargs) -> str:
@@ -22,20 +49,18 @@ def get_system_status(*args, **kwargs) -> str:
     cpu = psutil.cpu_percent(interval=0.05)
     ram = psutil.virtual_memory().percent
     disk = psutil.disk_usage("C:\\" if os.name == "nt" else "/").percent
-    return f"Sistem Durumu -> CPU: %{cpu}, RAM: %{ram}, Disk: %{disk}"
+    gm = "AÇIK (Yüksek Performans)" if _GAME_MODE_ACTIVE else "Kapalı"
+    return f"Sistem Durumu -> CPU: %{cpu}, RAM: %{ram}, Disk: %{disk}, Oyun Modu: {gm}"
 
 
 def get_datetime(*args, **kwargs) -> str:
     """Anlık tarih ve saat bilgisini döndürür."""
     now = datetime.datetime.now()
-    return now.strftime("%d Eylül %Y, %H:%M:%S")
+    return now.strftime("%d Kasım %Y, %H:%M:%S")
 
 
 def _grab_screenshot_image():
     """Ekranı PIL Image olarak alır (Windows InputDesktop bağlamı + ImageGrab/pyautogui)."""
-    import os
-    import ctypes
-
     hdesk = None
     if os.name == "nt":
         try:
@@ -137,7 +162,6 @@ def _endpoint_volume():
     from comtypes import CLSCTX_ALL
 
     devices = AudioUtilities.GetSpeakers()
-    # Yeni pycaw: EndpointVolume özelliği; eski: Activate(...)
     endpoint = getattr(devices, "EndpointVolume", None)
     if endpoint is not None:
         return endpoint
@@ -273,8 +297,6 @@ def sleep_pc() -> str:
     """Bilgisayarı uyku moduna alır."""
     try:
         if platform.system() == "Windows":
-            import ctypes
-
             # hibernate=False, force=True, wakeupEventsDisabled=False
             ctypes.windll.PowrProf.SetSuspendState(0, 1, 0)
         else:
@@ -299,8 +321,9 @@ def cancel_shutdown() -> str:
         log.error(f"Kapatma iptal hatası: {e}")
         return "Kapatma iptal edilemedi."
 
+
 def get_telemetry_dict() -> dict:
-    """Canlı sistem telemetrisi (CPU, RAM, Disk, Pil, Saat)."""
+    """Canlı sistem telemetrisi (CPU, RAM, Disk, Pil, Saat, Oyun Modu)."""
     try:
         import psutil
         cpu = psutil.cpu_percent(interval=None)
@@ -320,18 +343,18 @@ def get_telemetry_dict() -> dict:
             "ram": round(float(ram), 1),
             "disk": round(float(disk), 1),
             "battery": battery,
+            "game_mode": _GAME_MODE_ACTIVE,
             "time": datetime.datetime.now().strftime("%H:%M:%S"),
         }
     except Exception as e:
         log.error(f"Telemetri okuma hatası: {e}")
-        return {"cpu": 0.0, "ram": 0.0, "disk": 0.0, "battery": None, "error": str(e)}
+        return {"cpu": 0.0, "ram": 0.0, "disk": 0.0, "battery": None, "game_mode": _GAME_MODE_ACTIVE, "error": str(e)}
 
 
 def turn_off_display() -> str:
     """Monitörü enerji tasarrufu/uyku moduna alır (ekranı karartır)."""
     try:
         if platform.system() == "Windows":
-            import ctypes
             # HWND_BROADCAST = 0xFFFF, WM_SYSCOMMAND = 0x0112, SC_MONITORPOWER = 0xF170, 2 = power off
             ctypes.windll.user32.SendMessageW(0xFFFF, 0x0112, 0xF170, 2)
             return "PC monitörü kapatıldı."
@@ -349,6 +372,7 @@ def open_special_folder(folder_name: str) -> str:
         mapping = {
             "downloads": user_home / "Downloads",
             "indirilenler": user_home / "Downloads",
+            "airdrop": user_home / "Downloads" / "RIFKI_AirDrop",
             "documents": user_home / "Documents",
             "belgeler": user_home / "Documents",
             "desktop": user_home / "Desktop",
@@ -360,10 +384,8 @@ def open_special_folder(folder_name: str) -> str:
             "home": user_home,
         }
         target = mapping.get(name)
-        if target is None:
-            p = Path(folder_name)
-            if p.is_dir():
-                target = p
+        if name == "airdrop" and target is not None:
+            target.mkdir(parents=True, exist_ok=True)
         if target and target.is_dir():
             if platform.system() == "Windows":
                 os.startfile(str(target))
@@ -440,3 +462,198 @@ def type_text_to_pc(text: str) -> str:
     except Exception as e:
         log.error(f"Metin yazdırma hatası: {e}")
         return f"Metin yazılamadı: {e}"
+
+
+# =========================================================================
+# 🖱️ CANLI TOUCHPAD (FARE KONTROLÜ) — Win32 Düşük Gecikmeli API
+# =========================================================================
+def move_mouse_relative(dx: int, dy: int) -> str:
+    """PC fare imlecini göreceli olarak (dx, dy piksel) hareket ettirir."""
+    try:
+        dx_clamped = max(-600, min(600, int(dx)))
+        dy_clamped = max(-600, min(600, int(dy)))
+        if os.name == "nt":
+            ctypes.windll.user32.mouse_event(MOUSEEVENTF_MOVE, dx_clamped, dy_clamped, 0, 0)
+        else:
+            import pyautogui
+            pyautogui.moveRel(dx_clamped, dy_clamped)
+        return "Fare hareket ettirildi."
+    except Exception as e:
+        log.error(f"Fare hareket hatası: {e}")
+        return f"Fare hareket ettirilemedi: {e}"
+
+
+def mouse_click(button: str = "left") -> str:
+    """PC faresine sol, sağ, orta veya çift tıklama yaptırır."""
+    btn = (button or "left").lower().strip()
+    try:
+        if os.name == "nt":
+            u32 = ctypes.windll.user32
+            if btn == "right":
+                u32.mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0)
+                u32.mouse_event(MOUSEEVENTF_RIGHTUP, 0, 0, 0, 0)
+                return "Sağ tık uygulandı."
+            elif btn == "middle":
+                u32.mouse_event(MOUSEEVENTF_MIDDLEDOWN, 0, 0, 0, 0)
+                u32.mouse_event(MOUSEEVENTF_MIDDLEUP, 0, 0, 0, 0)
+                return "Orta tık uygulandı."
+            elif btn == "double":
+                for _ in range(2):
+                    u32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+                    u32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+                    time.sleep(0.04)
+                return "Çift tık uygulandı."
+            else:
+                u32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+                u32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+                return "Sol tık uygulandı."
+        else:
+            import pyautogui
+            if btn == "double":
+                pyautogui.doubleClick()
+            else:
+                pyautogui.click(button=btn if btn in ("left", "right", "middle") else "left")
+            return f"Fare tıklandı ({btn})."
+    except Exception as e:
+        log.error(f"Fare tıklama hatası: {e}")
+        return f"Fare tıklanamadı: {e}"
+
+
+def mouse_scroll(dy: int) -> str:
+    """PC fare tekerleğini yukarı (+dy) veya aşağı (-dy) kaydırır."""
+    try:
+        steps = max(-20, min(20, int(dy)))
+        if os.name == "nt":
+            ctypes.windll.user32.mouse_event(MOUSEEVENTF_WHEEL, 0, 0, steps * 120, 0)
+        else:
+            import pyautogui
+            pyautogui.scroll(steps * 100)
+        return "Sayfa kaydırıldı."
+    except Exception as e:
+        log.error(f"Fare kaydırma hatası: {e}")
+        return f"Kaydırma yapılamadı: {e}"
+
+
+# =========================================================================
+# 🎮 OYUN & PERFORMANS MODU + RAM OPTİMİZASYONU
+# =========================================================================
+def optimize_system_ram(*args, **kwargs) -> str:
+    """
+    Windows EmptyWorkingSet API kullanarak arka planda atıl duran uygulamaların
+    RAM çalışma kümelerini (working set) güvenli şekilde temizler ve belleği rahatlatır.
+    Hiçbir uygulamayı kapatmaz veya veri kaybına yol açmaz.
+    """
+    import psutil
+
+    vm_before = psutil.virtual_memory()
+    used_before = vm_before.used
+    pct_before = vm_before.percent
+
+    gc.collect()
+
+    trimmed_count = 0
+    if os.name == "nt":
+        try:
+            kernel32 = ctypes.windll.kernel32
+            psapi = ctypes.windll.psapi
+            # PROCESS_QUERY_INFORMATION (0x0400) | PROCESS_SET_QUOTA (0x0100)
+            access = 0x0400 | 0x0100
+            for proc in psutil.process_iter(["pid", "name"]):
+                pid = proc.info.get("pid")
+                if not pid or pid <= 4:
+                    continue
+                hproc = kernel32.OpenProcess(access, False, int(pid))
+                if hproc:
+                    try:
+                        if psapi.EmptyWorkingSet(hproc):
+                            trimmed_count += 1
+                    finally:
+                        kernel32.CloseHandle(hproc)
+        except Exception as e:
+            log.warning(f"Win32 RAM EmptyWorkingSet uyarısı: {e}")
+
+    time.sleep(0.15)
+    vm_after = psutil.virtual_memory()
+    used_after = vm_after.used
+    pct_after = vm_after.percent
+    freed_mb = max(0, int(round((used_before - used_after) / (1024 * 1024))))
+
+    log.info(f"RAM optimize edildi: {trimmed_count} işlem, ~{freed_mb} MB kazanıldı (%{pct_before} -> %{pct_after})")
+    if freed_mb > 5:
+        return (
+            f"🚀 RAM Optimizasyonu tamamlandı! {trimmed_count} arka plan işleminin önbelleği temizlendi, "
+            f"yaklaşık {freed_mb} MB RAM boşa çıkarıldı (Bellek kullanımı: %{pct_before} → %{pct_after})."
+        )
+    return (
+        f"🚀 RAM belleği denetlendi ve {trimmed_count} işlemin çalışma kümesi optimize edildi "
+        f"(Mevcut bellek kullanımı: %{pct_after})."
+    )
+
+
+def set_game_mode(enabled: bool = True, *args, **kwargs) -> str:
+    """
+    Oyun ve Yüksek Performans Modunu açar veya kapatır:
+    - Açıldığında: Windows Yüksek Performans güç planını devreye alır, RAM önbelleğini temizler
+      ve R.I.F.K.I masaüstü HUD animasyonunu Eco (Düşük GPU/CPU) moduna çeker.
+    - Kapatıldığında: Windows Dengeli güç planına döner ve HUD animasyonunu tam hıza çıkarır.
+    """
+    global _GAME_MODE_ACTIVE
+    if isinstance(enabled, str):
+        enabled = enabled.strip().lower() not in ("0", "false", "no", "off", "kapat", "kapalı", "hayır")
+    else:
+        enabled = bool(enabled)
+
+    _GAME_MODE_ACTIVE = enabled
+    no_win = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+    if enabled:
+        if os.name == "nt":
+            try:
+                # High Performance GUID: 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
+                subprocess.run(
+                    ["powercfg", "/setactive", "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"],
+                    creationflags=no_win,
+                    timeout=5,
+                    check=False,
+                )
+            except Exception as e:
+                log.warning(f"Güç planı değiştirilemedi: {e}")
+
+        ram_msg = optimize_system_ram()
+        if _GAME_MODE_CALLBACK:
+            try:
+                _GAME_MODE_CALLBACK(True)
+            except Exception as e:
+                log.warning(f"Game mode UI callback hatası: {e}")
+
+        log.info("Oyun & Performans Modu AKTİF edildi.")
+        return (
+            "🎮 Oyun ve Performans Modu AKTİF! Windows Yüksek Performans güç planı devreye alındı, "
+            "R.I.F.K.I arayüzü sıfır yük (Eco HUD) moduna çekildi. " + ram_msg
+        )
+    else:
+        if os.name == "nt":
+            try:
+                # Balanced GUID: 381b4222-f694-41f0-9685-ff5bb260df2e
+                subprocess.run(
+                    ["powercfg", "/setactive", "381b4222-f694-41f0-9685-ff5bb260df2e"],
+                    creationflags=no_win,
+                    timeout=5,
+                    check=False,
+                )
+            except Exception as e:
+                log.warning(f"Dengeli güç planına dönülemedi: {e}")
+
+        if _GAME_MODE_CALLBACK:
+            try:
+                _GAME_MODE_CALLBACK(False)
+            except Exception as e:
+                log.warning(f"Game mode UI callback hatası: {e}")
+
+        log.info("Oyun & Performans Modu KAPATILDI.")
+        return "🎮 Oyun Modu kapatıldı. Sistem standart güç planına ve tam hız HUD animasyonuna geri döndü."
+
+
+def toggle_game_mode() -> str:
+    """Oyun modunu tersine çevirir (Açık <-> Kapalı)."""
+    return set_game_mode(not _GAME_MODE_ACTIVE)
