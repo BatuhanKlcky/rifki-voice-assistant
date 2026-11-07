@@ -5,7 +5,7 @@ Tek kaynak sürüm numarası. Installer (rifki.iss) ile senkron tutulmalı.
 """
 
 APP_NAME = "RIFKI"
-APP_VERSION = "2.6.0"
+APP_VERSION = "2.6.1"
 
 # GitHub Releases: Setup asset adı RIFKI-Setup-{version}.exe
 GITHUB_OWNER = "BatuhanKlcky"

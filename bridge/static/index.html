@@ -7,14 +7,14 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>RIFKI Siber Kokpit</title>
-  <link rel="stylesheet" href="/static/style.css?v=2.6.0" />
+  <link rel="stylesheet" href="/static/style.css?v=2.6.1" />
 </head>
 <body>
   <!-- Top Cockpit Bar -->
   <header class="top-bar">
     <div class="brand">
       <div class="kicker-row">
-        <span class="brand-tag">SYS.2.6</span>
+        <span class="brand-tag">SYS.2.6.1</span>
         <span class="brand-sub">NEON HUD</span>
       </div>
       <h1 class="brand-title">RIFKI <span>// SİBER KÖPRÜ</span></h1>
@@ -353,11 +353,20 @@
     <section id="visionDeck" class="deck-pane" role="tabpanel">
       <div class="card">
         <div class="card-head">
-          <h3>🖥️ Canlı Bilgisayar Ekranı</h3>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <h3>🖥️ Canlı Bilgisayar Ekranı</h3>
+            <span class="pill" id="liveFpsBadge" style="display:none; font-size:10px; font-weight:700; color:var(--accent); border-color:var(--accent);">⚡ 0 FPS</span>
+          </div>
           <div class="live-tools">
             <button type="button" id="btnLiveToggle" class="btn-ghost">Canlı: Kapalı</button>
             <button type="button" id="btnLiveRefresh" class="btn-ghost">Yenile</button>
           </div>
+        </div>
+        <div class="live-mode-row">
+          <span style="font-size:11px; color:var(--muted); font-weight:600;">Mod:</span>
+          <button type="button" class="btn-sub active" id="btnModeUltra" title="Minimum gecikme, tam canlı gibi akıcı ekran (~20 FPS, 50ms)">⚡ Ultra Canlı</button>
+          <button type="button" class="btn-sub" id="btnModeBalanced" title="Dengeli hız ve kalite (~10 FPS)">🎯 Dengeli</button>
+          <button type="button" class="btn-sub" id="btnModeHd" title="Yüksek çözünürlük net görüntü (3 FPS)">💎 HD Detay</button>
         </div>
         <div class="live-frame">
           <img id="liveImg" alt="PC ekranı" hidden />
@@ -453,6 +462,6 @@
     <p class="lightbox-hint">Kapatmak için dokunun</p>
   </div>
 
-  <script src="/static/app.js?v=2.6.0"></script>
+  <script src="/static/app.js?v=2.6.1"></script>
 </body>
 </html>

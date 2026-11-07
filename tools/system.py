@@ -108,7 +108,7 @@ def _draw_mouse_cursor(image, cx: int, cy: int):
         log.warning(f"İmleç çizme uyarısı: {e}")
 
 
-def _grab_screenshot_image(include_cursor: bool = True):
+def _grab_screenshot_image(include_cursor: bool = True, all_screens: bool = True):
     """Ekranı PIL Image olarak alır ve Windows'ta fare imlecini görüntünün üzerine çizer."""
     hdesk = None
     cursor_pos = None
@@ -127,7 +127,7 @@ def _grab_screenshot_image(include_cursor: bool = True):
     image = None
     try:
         from PIL import ImageGrab
-        image = ImageGrab.grab(all_screens=True)
+        image = ImageGrab.grab(all_screens=all_screens)
     except Exception as e:
         errors.append(f"ImageGrab: {e}")
 
@@ -170,11 +170,16 @@ def capture_screenshot_png() -> bytes:
     return data
 
 
-def capture_screenshot_for_mobile(max_width: int = 1280, quality: int = 72) -> bytes:
-    """Mobil için ölçeklenmiş JPEG (daha küçük / hızlı)."""
+def capture_screenshot_for_mobile(
+    max_width: int = 1280,
+    quality: int = 72,
+    fast: bool = False,
+    all_screens: bool = True,
+) -> bytes:
+    """Mobil için ölçeklenmiş JPEG (daha küçük / ultra hızlı / minimum gecikmeli)."""
     import io
 
-    image = _grab_screenshot_image()
+    image = _grab_screenshot_image(include_cursor=True, all_screens=all_screens)
     if image.mode not in ("RGB", "L"):
         image = image.convert("RGB")
     w, h = image.size
@@ -183,12 +188,21 @@ def capture_screenshot_for_mobile(max_width: int = 1280, quality: int = 72) -> b
         try:
             from PIL import Image as _PILImage
 
-            resample = getattr(_PILImage, "Resampling", _PILImage).LANCZOS
+            resample = (
+                getattr(_PILImage, "Resampling", _PILImage).BILINEAR
+                if fast
+                else getattr(_PILImage, "Resampling", _PILImage).LANCZOS
+            )
         except Exception:
-            resample = 1  # LANCZOS
+            resample = 2 if fast else 1  # 2: BILINEAR, 1: LANCZOS
         image = image.resize((max_width, new_h), resample)
     buf = io.BytesIO()
-    image.save(buf, format="JPEG", quality=max(40, min(95, int(quality))), optimize=True)
+    image.save(
+        buf,
+        format="JPEG",
+        quality=max(35, min(95, int(quality))),
+        optimize=not fast,
+    )
     data = buf.getvalue()
     if not data or len(data) < 100:
         raise RuntimeError("ekran görüntüsü alınamadı")

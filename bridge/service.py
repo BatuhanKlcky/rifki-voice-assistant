@@ -370,9 +370,11 @@ class MobileBridge:
         max_width = max(320, min(1920, max_width))
         quality = max(40, min(90, quality))
         live = (request.rel_url.query.get("live") or "").lower() in ("1", "true", "yes")
+        fast = (request.rel_url.query.get("fast") or "").lower() in ("1", "true", "yes") or live
+        primary_only = (request.rel_url.query.get("primary") or ("1" if live else "0")).lower() in ("1", "true", "yes")
         if live:
             max_width = min(max_width, 960)
-            quality = min(quality, 55)
+            quality = min(quality, 60)
 
         loop = asyncio.get_running_loop()
         try:
@@ -380,7 +382,12 @@ class MobileBridge:
 
             jpeg = await loop.run_in_executor(
                 None,
-                lambda: capture_screenshot_for_mobile(max_width, quality),
+                lambda: capture_screenshot_for_mobile(
+                    max_width=max_width,
+                    quality=quality,
+                    fast=fast,
+                    all_screens=not primary_only,
+                ),
             )
             if not jpeg or len(jpeg) < 100:
                 raise RuntimeError("boş görüntü")
@@ -396,7 +403,8 @@ class MobileBridge:
             body=jpeg,
             content_type="image/jpeg",
             headers={
-                "Cache-Control": "no-store",
+                "Cache-Control": "no-store, no-cache, must-revalidate",
+                "Pragma": "no-cache",
                 "Content-Length": str(len(jpeg)),
             },
         )

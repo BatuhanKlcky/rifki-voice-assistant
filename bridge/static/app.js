@@ -1133,32 +1133,145 @@ async function fetchStatus() {
     });
   }
 
-  // Live Screen
-  async function refreshLive() {
-    if (!token) return;
+  // =========================================================================
+  // 6. CANLI EKRAN MOTORU (ULTRA-LOW LATENCY STREAM & ADAPTIVE FRAME LOOP)
+  // =========================================================================
+  let liveMode = "ultra"; // "ultra" | "balanced" | "hd"
+  let liveObjectUrl = null;
+  let liveFrameCount = 0;
+  let liveFpsLastCheck = performance.now();
+  let liveCurrentFps = 0;
+  let liveLatencyMs = 0;
+  let livePendingFetch = false;
+
+  const btnModeUltra = document.getElementById("btnModeUltra");
+  const btnModeBalanced = document.getElementById("btnModeBalanced");
+  const btnModeHd = document.getElementById("btnModeHd");
+  const liveFpsBadge = document.getElementById("liveFpsBadge");
+
+  function setLiveMode(mode) {
+    liveMode = mode;
+    [btnModeUltra, btnModeBalanced, btnModeHd].forEach((btn) => {
+      if (btn) btn.classList.remove("active");
+    });
+    if (mode === "ultra" && btnModeUltra) btnModeUltra.classList.add("active");
+    if (mode === "balanced" && btnModeBalanced) btnModeBalanced.classList.add("active");
+    if (mode === "hd" && btnModeHd) btnModeHd.classList.add("active");
+  }
+
+  if (btnModeUltra) btnModeUltra.addEventListener("click", () => setLiveMode("ultra"));
+  if (btnModeBalanced) btnModeBalanced.addEventListener("click", () => setLiveMode("balanced"));
+  if (btnModeHd) btnModeHd.addEventListener("click", () => setLiveMode("hd"));
+
+  function getModeParams() {
+    if (liveMode === "ultra") {
+      // Ultra Hızlı: 768px, Q48, ~20 FPS, ~45-60ms gecikme
+      return { w: 768, q: 48, minDelay: 5 };
+    }
+    if (liveMode === "balanced") {
+      // Dengeli: 960px, Q58, ~12 FPS, ~75ms gecikme
+      return { w: 960, q: 58, minDelay: 45 };
+    }
+    // HD: 1280px, Q72, ~4 FPS (yüksek detay)
+    return { w: 1280, q: 72, minDelay: 180 };
+  }
+
+  function updateLiveStats(latency) {
+    liveFrameCount++;
+    const now = performance.now();
+    const elapsed = now - liveFpsLastCheck;
+    if (elapsed >= 800) {
+      liveCurrentFps = Math.round((liveFrameCount * 1000) / elapsed);
+      liveFrameCount = 0;
+      liveFpsLastCheck = now;
+      if (liveFpsBadge && liveOn) {
+        liveFpsBadge.textContent = `⚡ ${liveCurrentFps} FPS · ${latency}ms`;
+        liveFpsBadge.style.display = "inline-flex";
+      }
+    }
+  }
+
+  async function fetchLiveFrame() {
+    if (!token || !liveOn || livePendingFetch) return;
+    livePendingFetch = true;
+    const { w, q, minDelay } = getModeParams();
+    const t0 = performance.now();
+
     try {
-      const res = await fetch(`/api/screenshot?t=${Date.now()}`, { headers: authHeaders() });
-      if (!res.ok) return;
+      const res = await fetch(`/api/screenshot?live=1&fast=1&w=${w}&q=${q}&t=${Date.now()}`, {
+        headers: authHeaders(),
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
+      const newUrl = URL.createObjectURL(blob);
+      const oldUrl = liveObjectUrl;
+      liveObjectUrl = newUrl;
+
       if (liveImg) {
-        liveImg.src = url;
+        liveImg.src = newUrl;
         liveImg.hidden = false;
       }
       if (liveEmpty) liveEmpty.hidden = true;
+
+      // Tarayıcı belleğini temiz tut: eski blob nesnesini anında serbest bırak
+      if (oldUrl) URL.revokeObjectURL(oldUrl);
+
+      const t1 = performance.now();
+      liveLatencyMs = Math.round(t1 - t0);
+      updateLiveStats(liveLatencyMs);
+
+      livePendingFetch = false;
+      if (liveOn) {
+        const fetchDuration = t1 - t0;
+        const sleepTime = Math.max(5, minDelay - Math.floor(fetchDuration));
+        setTimeout(fetchLiveFrame, sleepTime);
+      }
+    } catch (err) {
+      livePendingFetch = false;
+      if (liveOn) {
+        setTimeout(fetchLiveFrame, 300);
+      }
+    }
+  }
+
+  async function refreshLive() {
+    if (!token) return;
+    const { w, q } = getModeParams();
+    try {
+      const res = await fetch(`/api/screenshot?live=1&fast=1&w=${w}&q=${q}&t=${Date.now()}`, {
+        headers: authHeaders(),
+        cache: "no-store",
+      });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const newUrl = URL.createObjectURL(blob);
+      const oldUrl = liveObjectUrl;
+      liveObjectUrl = newUrl;
+      if (liveImg) {
+        liveImg.src = newUrl;
+        liveImg.hidden = false;
+      }
+      if (liveEmpty) liveEmpty.hidden = true;
+      if (oldUrl) URL.revokeObjectURL(oldUrl);
     } catch (_) {}
   }
 
   if (btnLiveToggle) {
     btnLiveToggle.addEventListener("click", () => {
       liveOn = !liveOn;
-      btnLiveToggle.textContent = liveOn ? "Canlı: Açık" : "Canlı: Kapalı";
+      btnLiveToggle.textContent = liveOn ? "Canlı: Açık 🟢" : "Canlı: Kapalı";
       btnLiveToggle.style.borderColor = liveOn ? "var(--ok)" : "var(--line)";
+      if (liveFpsBadge) {
+        liveFpsBadge.style.display = liveOn ? "inline-flex" : "none";
+        if (liveOn) liveFpsBadge.textContent = "⚡ Başlatılıyor…";
+      }
       if (liveOn) {
-        refreshLive();
-        liveTimer = setInterval(refreshLive, 2500);
-      } else {
-        clearInterval(liveTimer);
+        livePendingFetch = false;
+        liveFrameCount = 0;
+        liveFpsLastCheck = performance.now();
+        fetchLiveFrame();
       }
     });
   }

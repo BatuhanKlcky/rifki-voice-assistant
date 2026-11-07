@@ -568,7 +568,7 @@ body {
   transition: all 0.15s;
 }
 
-.btn-sub:active, .btn-sub.primary {
+.btn-sub:active, .btn-sub.primary, .btn-sub.active {
   background: rgba(61, 240, 255, 0.2);
   border-color: var(--accent);
   color: var(--accent);
@@ -751,6 +751,21 @@ body {
 .live-tools {
   display: flex;
   gap: 6px;
+  align-items: center;
+}
+
+.live-mode-row {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0 10px 0;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.live-mode-row .btn-sub {
+  flex: none;
+  padding: 4px 10px;
+  font-size: 11px;
 }
 
 .live-frame {
