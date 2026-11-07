@@ -533,6 +533,7 @@ class MainWindow(QWidget):
         menu.addSeparator()
         menu.addAction(quit_action)
         self.tray_icon.setContextMenu(menu)
+        self.tray_icon.activated.connect(self._on_tray_activated)
         self.tray_icon.show()
         QTimer.singleShot(600, self._announce_started)
         if settings.AUTO_UPDATE:
@@ -708,9 +709,33 @@ class MainWindow(QWidget):
         box.exec_()
 
 
+    def _on_tray_activated(self, reason):
+        if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick):
+            self._bring_to_front()
+
     def _show_from_tray(self):
+        self._bring_to_front()
+
+    @pyqtSlot()
+    def _bring_to_front(self):
+        """Kullanıcı simgeye tıkladığında veya kısayoldan açtığında pencereyi anında öne getirir."""
         self.show()
-        self._anchor_to_desktop()
+        self.setWindowState(self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive)
+        self.raise_()
+        self.activateWindow()
+        hwnd = int(self.winId())
+        if hwnd:
+            _user32.ShowWindow(hwnd, SW_SHOW)
+            _user32.SetWindowPos(
+                hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW
+            )
+            # Bir anlık TOPMOST yapıp ardından normal pencere seviyesine al
+            _user32.SetWindowPos(
+                hwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
+                SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW
+            )
+            _user32.SetForegroundWindow(hwnd)
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -1538,5 +1563,7 @@ def run_app():
     app.setQuitOnLastWindowClosed(False)
     app.setStyleSheet(APP_QSS)
     window = MainWindow()
+    from core.single_instance import start_single_instance_listener
+    start_single_instance_listener(lambda: QMetaObject.invokeMethod(window, "_bring_to_front", Qt.QueuedConnection))
     window.show()
     sys.exit(app.exec_())
