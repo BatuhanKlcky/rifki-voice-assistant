@@ -7,8 +7,8 @@ RIFKI komuta ekranının çizilen parçaları.
 - WaveformWidget: dinleme / konuşma enerjisini gösteren ses izi.
 - RadialGauge: CPU, RAM ve disk için kokpit kadranı.
 - paint_command_deck: pencerenin radar alanı, köşe nişangâhları ve kenar taraması.
-- AsciiBackdrop: tüm ekranı kaplayan hareketli ASCII karakter alanı ve ortadaki
-  ASCII göz (göz kırpar, etrafa bakar, duruma göre renk/tempo değiştirir).
+- AsciiBackdrop: tüm ekranı kaplayan pürüzsüz akan siber ASCII karakter alanı ve ortadaki
+  siber göz (göz kırpar, etrafa bakar, duruma göre renk/tempo değiştirir).
 - AsciiEyeAnchor: düzende gözün yerini tutan görünmez yer tutucu.
 """
 
@@ -156,7 +156,7 @@ def _prepare_glass(widget):
     widget.setStyleSheet("background: transparent;")
 
 
-_ACTIVE_FPS_MS = 50
+_ACTIVE_FPS_MS = 33
 _IDLE_FPS_MS = 250
 
 
@@ -465,7 +465,7 @@ class RadialGauge(QWidget):
 
 
 # ---------------------------------------------------------------------------
-# ASCII arka plan + göz (Siber / Neon Cyan Teması & Konuşma Morf Animasyonu)
+# ASCII arka plan + siber göz (Neon Cyan Teması & Akıcı 60 FPS Animasyon)
 # ---------------------------------------------------------------------------
 
 WORDS_SCLERA = (
@@ -501,10 +501,9 @@ BG_STREAMS = (
 )
 _CHARS_BG = np.array(list(BG_STREAMS), dtype="<U1")
 
-# Mevcut HUD arayüzü ile birebir uyumlu Neon Cyan / Sci-Fi renk paleti
 ASCII_STATE_TINT = {
     "OFF": QColor(50, 85, 110),          # Sönük çelik mavisi
-    "IDLE": QColor(61, 240, 255),        # Neon Cyan (#3DF0FF) - HUD ile birebir
+    "IDLE": QColor(61, 240, 255),        # Neon Cyan (#3DF0FF)
     "LISTENING": QColor(61, 255, 176),   # Sinyal Zümrütü (#3DFFB0)
     "THINKING": QColor(255, 176, 32),    # Altın Kehribar (#FFB020)
     "PROCESSING": QColor(255, 122, 46),  # Canlı Turuncu (#FF7A2E)
@@ -522,9 +521,7 @@ _ASCII_STATE_PARAMS = {
 
 
 class AsciiBackdrop:
-    """Tüm ekranı kaplayan hareketli ASCII karakter alanı, siber göz ve konuşma morfları."""
-
-    _N_BG_FRAMES = 6
+    """Tüm ekranı kaplayan, sıfır gecikmeli pürüzsüz akan siber ASCII akışı ve göz animasyonu."""
 
     def __init__(self, pixel_size: int = 12):
         self.font = QFont("Consolas")
@@ -541,7 +538,14 @@ class AsciiBackdrop:
         self._cols = 0
         self._rows = 0
 
-        # Göz alt-ızgarası (yalnızca göz bölgesinde NumPy + metin çizimi yapılır)
+        # Pürüzsüz kesintisiz arka plan şablonu (2D seamless stream tile)
+        self._pattern_cols = 100
+        self._pattern_rows = 100
+        self._tile_w = int(self._pattern_cols * self.char_w)
+        self._tile_h = int(self._pattern_rows * self.char_h)
+        self._stream_tile = None
+
+        # Göz alt-ızgarası (yalnızca göz bölgesi için önceden hesaplanır)
         self._eye_r0 = 0
         self._eye_r1 = 0
         self._eye_c0 = 0
@@ -558,25 +562,20 @@ class AsciiBackdrop:
         self._esclera_chars = None
         self._eiris_chars = None
         self._emorph_base = None
-        self._full_bg_base = None
-        self._ebg_frames_chars = []
-        self._bg_pixmaps = [None] * self._N_BG_FRAMES
 
         self._frame_pixmap = None
-        self._last_bg_frame_idx = -1
         self._last_render_ts = 0.0
-        self._min_frame_interval = 0.055  # ~18 FPS tavan; ara child repaint'ler önbellekten 0.05ms'de döner
 
         now = time.perf_counter()
         self._last = now
         self._phase = 0.0
+        self._scroll_x = 0.0
+        self._scroll_y = 0.0
         tempo, opening, pupil, wander = _ASCII_STATE_PARAMS["OFF"]
         self._tempo = tempo
         self._open = opening
         self._pupil = pupil
         self._wander = wander
-
-        # Konuşma sırasında geometrik şekillere geçiş ağırlığı (0.0 -> 1.0)
         self._morph_weight = 0.0
 
         self._next_blink = now + random.uniform(2.5, 5.0)
@@ -585,15 +584,15 @@ class AsciiBackdrop:
         self._gaze_target = np.zeros(2, dtype=np.float32)
         self._next_saccade = now + 1.0
 
-        # HUD renkleriyle tam uyumlu palet
         self._c_bg = QColor(26, 78, 112, 160)       # Siber cyan matris akışı
-        self._c_sclera = QColor(220, 248, 255, 255) # Buz beyazı / parlak elektrik cyan
+        self._c_sclera = QColor(220, 248, 255, 255) # Parlak buz beyazı
         self._c_crease = QColor(61, 240, 255, 190)  # Neon Cyan
         self._c_glint = QColor(255, 255, 255, 255)  # Saf Beyaz
-        self._c_pupil = QColor(2, 8, 16, 250)       # Derin Uzay Laciverti
+        self._c_pupil = QColor(2, 8, 16, 250)       # Derin Lacivert
         self._c_lash = QColor(3, 10, 20, 250)
         self._c_morph = QColor(120, 245, 255, 255)  # Konuşma geometrisi parlak cyan
         self._c_core = QColor(255, 255, 255, 255)   # Odak parlaması beyaz
+        self._c_clear = QColor(2, 6, 12)
         self._morph_alphabet = np.array(list("0O*#%X+@<>{}[]"), dtype="<U1")
 
     def set_state(self, state: str):
@@ -601,13 +600,40 @@ class AsciiBackdrop:
         if state != self._state:
             self._state = state
             self._next_saccade = time.perf_counter()
-            self._last_render_ts = 0.0
 
     @property
     def state(self) -> str:
         return self._state
 
+    def _ensure_tiles(self):
+        if self._stream_tile is not None:
+            return
+        p_cols, p_rows = self._pattern_cols, self._pattern_rows
+        tile_w, tile_h = self._tile_w, self._tile_h
+        n_bg = len(_CHARS_BG)
+
+        xs = np.arange(p_cols * 2, dtype=np.float32)
+        ys = np.arange(p_rows * 2, dtype=np.float32)
+        X, Y = np.meshgrid(xs, ys)
+        bg_idx = (np.floor(X * 0.15 + Y * 0.35).astype(np.int32)) % n_bg
+        char_mat = np.ascontiguousarray(_CHARS_BG[bg_idx])
+        row_strings = char_mat.view(f"<U{p_cols * 2}")[:, 0].tolist()
+
+        pix = QPixmap(tile_w * 2, tile_h * 2)
+        pix.fill(self._c_clear)
+        p = QPainter(pix)
+        p.setFont(self.font)
+        p.setRenderHint(QPainter.TextAntialiasing, True)
+        p.setPen(self._c_bg)
+        char_h = self.char_h
+        ascent = self.ascent
+        for r, line in enumerate(row_strings):
+            p.drawText(QPointF(0.0, r * char_h + ascent), line)
+        p.end()
+        self._stream_tile = pix
+
     def _ensure_grid(self, W: int, H: int, cx: float, cy: float, scale: float):
+        self._ensure_tiles()
         key = (W, H, round(cx, 1), round(cy, 1), round(scale, 3))
         if key == self._grid_key:
             return
@@ -617,7 +643,7 @@ class AsciiBackdrop:
         ys = (np.arange(self._rows, dtype=np.float32) + 0.5) * self.char_h
         X_full, Y_full = np.meshgrid(xs, ys)
 
-        # Göz kapsama kutusu (maksimum açılma + kirpik/kıvrım payı)
+        # Göz kapsama kutusu
         max_left = 405.0 * scale
         max_right = 505.0 * scale
         max_top = 240.0 * scale
@@ -657,44 +683,7 @@ class AsciiBackdrop:
         self._eiris_chars = _CHARS_IRIS[iris_idx]
         self._emorph_base = (self._edist * 0.2).astype(np.float32)
 
-        # Arka plan faz kareleri için karakter matrisleri (tam ekran bir kez, göz dilimi önbellekte)
-        bg_base_full = (X_full * 0.15 + Y_full * 0.35).astype(np.float32)
-        self._full_bg_base = bg_base_full
-        self._ebg_frames_chars = []
-        n_bg = len(_CHARS_BG)
-        for k in range(self._N_BG_FRAMES):
-            step_offset = k * (n_bg / float(self._N_BG_FRAMES))
-            e_idx = ((bg_base_full[r0:r1, c0:c1] + step_offset).astype(np.int32)) % n_bg
-            self._ebg_frames_chars.append(_CHARS_BG[e_idx])
-
-        self._bg_pixmaps = [None] * self._N_BG_FRAMES
-        self._last_bg_frame_idx = -1
         self._grid_key = key
-        self._last_render_ts = 0.0
-
-    def _get_bg_pixmap(self, W: int, H: int, frame_idx: int) -> QPixmap:
-        pix = self._bg_pixmaps[frame_idx]
-        if pix is not None and pix.width() == W and pix.height() == H:
-            return pix
-        pix = QPixmap(W, H)
-        pix.fill(QColor(2, 6, 12))
-        n_bg = len(_CHARS_BG)
-        step_offset = frame_idx * (n_bg / float(self._N_BG_FRAMES))
-        bg_idx = ((self._full_bg_base + step_offset).astype(np.int32)) % n_bg
-        char_mat = np.ascontiguousarray(_CHARS_BG[bg_idx])
-        row_strings = char_mat.view(f"<U{self._cols}")[:, 0].tolist()
-
-        p = QPainter(pix)
-        p.setFont(self.font)
-        p.setRenderHint(QPainter.TextAntialiasing, True)
-        p.setPen(self._c_bg)
-        char_h = self.char_h
-        ascent = self.ascent
-        for r, line in enumerate(row_strings):
-            p.drawText(QPointF(0.0, r * char_h + ascent), line)
-        p.end()
-        self._bg_pixmaps[frame_idx] = pix
-        return pix
 
     def _advance(self, now: float):
         dt = min(0.2, max(0.0, now - self._last))
@@ -707,13 +696,16 @@ class AsciiBackdrop:
         self._wander += (wander - self._wander) * k
         self._phase += dt * self._tempo
 
-        # Konuşurken geometrik şekillere yumuşak geçiş
+        # Akıcı piksel kaydırma (her karede donmasız ve takılmasız akış)
+        spd = 26.0 * max(0.85, self._tempo)
+        self._scroll_x = (self._scroll_x + dt * spd * 0.75) % self._tile_w
+        self._scroll_y = (self._scroll_y + dt * spd * 1.35) % self._tile_h
+
         if self._state == "SPEAKING":
             self._morph_weight = min(1.0, self._morph_weight + dt * 4.5)
         else:
             self._morph_weight = max(0.0, self._morph_weight - dt * 3.0)
 
-        # Göz hareketleri (saccades)
         if now >= self._next_saccade:
             spread = min(1.0, 0.45 * self._wander)
             self._gaze_target[:] = (
@@ -723,7 +715,6 @@ class AsciiBackdrop:
             self._next_saccade = now + random.uniform(0.7, 3.0) / max(0.3, self._wander)
         self._gaze += (self._gaze_target - self._gaze) * min(1.0, dt * 8.5)
 
-        # Kırpma (blink) - konuşurken kırpma seyrelir ve konuşma atımı öne çıkar
         blink = 1.0
         if self._state != "SPEAKING" and self._state != "OFF":
             if self._blink_start is None and now >= self._next_blink:
@@ -739,27 +730,6 @@ class AsciiBackdrop:
                     blink = abs(1.0 - 2.0 * p) ** 1.3
         return max(0.01, blink * self._open)
 
-    @staticmethod
-    def _draw_masked_slice(
-        painter: QPainter,
-        mask_row: np.ndarray,
-        ch_row: np.ndarray,
-        c_offset: int,
-        char_w: float,
-        y_pos: float,
-    ):
-        idx = np.flatnonzero(mask_row)
-        if idx.size == 0:
-            return
-        c0 = int(idx[0])
-        c1 = int(idx[-1]) + 1
-        sub_mask = mask_row[c0:c1]
-        sub_ch = ch_row[c0:c1]
-        w = c1 - c0
-        arr = np.ascontiguousarray(sub_ch if sub_mask.all() else np.where(sub_mask, sub_ch, " "))
-        line = arr.view(f"<U{w}")[0]
-        painter.drawText(QPointF((c_offset + c0) * char_w, y_pos), line)
-
     def paint(self, painter: QPainter, W: int, H: int, eye_center: QPointF, scale: float = 1.0, clip_rect=None):
         if W <= 0 or H <= 0:
             return
@@ -767,62 +737,37 @@ class AsciiBackdrop:
         self._ensure_grid(W, H, cx, cy, scale)
 
         now = time.perf_counter()
-        need_recreate = (
-            self._frame_pixmap is None
-            or self._frame_pixmap.width() != W
-            or self._frame_pixmap.height() != H
-        )
-        if not need_recreate and (now - self._last_render_ts) < self._min_frame_interval:
-            if clip_rect is not None:
-                painter.drawPixmap(clip_rect, self._frame_pixmap, clip_rect)
-            else:
-                painter.drawPixmap(0, 0, self._frame_pixmap)
-            return
-
-        if need_recreate:
+        if self._frame_pixmap is None or self._frame_pixmap.width() != W or self._frame_pixmap.height() != H:
             self._frame_pixmap = QPixmap(W, H)
-            self._last_bg_frame_idx = -1
 
-        self._last_render_ts = now
         blink = self._advance(now)
-        is_full_repaint = (clip_rect is None) or (clip_rect.width() >= W * 0.9)
-        if is_full_repaint or self._last_bg_frame_idx < 0:
-            bg_frame_idx = int(self._phase * 8.0) % self._N_BG_FRAMES
-        else:
-            bg_frame_idx = self._last_bg_frame_idx
-        bg_pix = self._get_bg_pixmap(W, H, bg_frame_idx)
 
-        buf_painter = QPainter(self._frame_pixmap)
-        if bg_frame_idx != self._last_bg_frame_idx:
-            buf_painter.drawPixmap(0, 0, bg_pix)
-            self._last_bg_frame_idx = bg_frame_idx
-        else:
-            # Sadece göz alt-ızgarasını arka plan karesinden geri yükle (1920x1080 yerine ~900x400 kopyalama)
-            erect = QRectF(
-                self._eye_c0 * self.char_w,
-                self._eye_r0 * self.char_h,
-                (self._eye_c1 - self._eye_c0) * self.char_w,
-                (self._eye_r1 - self._eye_r0) * self.char_h,
-            )
-            buf_painter.drawPixmap(erect, bg_pix, erect)
+        buf = QPainter(self._frame_pixmap)
 
-        self._render_eye_to_painter(buf_painter, cx, cy, scale, blink, bg_frame_idx)
-        buf_painter.end()
+        # 1. Pürüzsüz 60 FPS kesintisiz arka plan akışı (<1ms)
+        tile_w, tile_h = self._tile_w, self._tile_h
+        off_x = int(self._scroll_x)
+        off_y = int(self._scroll_y)
+        x = 0
+        while x < W:
+            dw = min(tile_w, W - x)
+            y = 0
+            while y < H:
+                dh = min(tile_h, H - y)
+                buf.drawPixmap(x, y, self._stream_tile, off_x, off_y, dw, dh)
+                y += dh
+            x += dw
+
+        # 2. Göz ve konuşma morflarını çiz
+        self._render_eye(buf, cx, cy, scale, blink)
+        buf.end()
 
         if clip_rect is not None:
             painter.drawPixmap(clip_rect, self._frame_pixmap, clip_rect)
         else:
             painter.drawPixmap(0, 0, self._frame_pixmap)
 
-    def _render_eye_to_painter(
-        self,
-        painter: QPainter,
-        cx: float,
-        cy: float,
-        scale: float,
-        blink: float,
-        bg_frame_idx: int,
-    ):
+    def _render_eye(self, painter: QPainter, cx: float, cy: float, scale: float, blink: float):
         eX, eY = self._eX, self._eY
         edx, edy = self._edx, self._edy
         edist, eangle = self._edist, self._eangle
@@ -830,7 +775,6 @@ class AsciiBackdrop:
         r0_off, c0_off = self._eye_r0, self._eye_c0
         erows, ecols = eX.shape
 
-        # Konuşurken göz ritmik olarak açılır ve ses dalgasıyla nabız atar
         speak_pulse = (0.16 * math.sin(self._phase * 8.5)) if self._morph_weight > 0.05 else 0.0
         B_top = 155.0 * scale * (blink + speak_pulse * self._morph_weight)
         B_bot = 125.0 * scale * (blink + speak_pulse * self._morph_weight)
@@ -839,22 +783,18 @@ class AsciiBackdrop:
         y_bot = B_bot * self._ebase_bot
 
         inside_eye = einside_x & (edy >= y_top) & (edy <= y_bot)
-
-        # Kirpik ve kıvrım
         d_top = np.abs(edy - y_top)
         d_bot = np.abs(edy - y_bot)
         is_lash = einside_x & ((d_top < 5.5) | (d_bot < 5.0))
         crease_y = y_top - 24.0 * scale
         is_crease = einside_x & (np.abs(edy - crease_y) < 5.5) & (edy < y_top)
 
-        active_eye_mask = inside_eye | is_lash | is_crease
-        eye_rows_mask = active_eye_mask.any(axis=1)
+        eye_rows_mask = (inside_eye | is_lash | is_crease).any(axis=1)
         if not eye_rows_mask.any():
             return
         r_min = int(np.argmax(eye_rows_mask))
         r_max = int(erows - np.argmax(eye_rows_mask[::-1]))
 
-        # İris ve göz bebeği konumu
         iris_cx = cx + float(self._gaze[0]) * 125.0 * scale
         iris_cy = cy + float(self._gaze[1]) * 42.0 * scale
         idx = eX - iris_cx
@@ -871,18 +811,18 @@ class AsciiBackdrop:
         inside_iris = inside_eye & (iris_r2 <= (IRIS_R * IRIS_R))
         inside_pupil = inside_iris & (iris_r2 <= (PUPIL_R * PUPIL_R))
 
-        # Işık parıltısı
         glint_x = idx + 28.0 * scale
         glint_y = idy + 26.0 * scale
         is_glint = inside_eye & ((glint_x * glint_x + glint_y * glint_y) < (11.0 * scale) ** 2)
 
         inside_sclera = inside_eye & (~inside_iris) & (~is_lash)
 
-        # --- KONUŞMA GEOMETRİK ŞEKİLLERİ (ŞEKİLLERE GİRME) ---
+        # --- KONUŞMA MORFLARI ---
         is_morph_shape = None
         is_morph_core = None
+        morph_on = self._morph_weight > 0.02
 
-        if self._morph_weight > 0.02:
+        if morph_on:
             wave_dist = (edist - self._phase * 150.0) % (80.0 * scale)
             sonic_rings = (wave_dist < (14.0 * scale)) & (edist < 340.0 * scale)
 
@@ -914,14 +854,13 @@ class AsciiBackdrop:
             is_morph_shape = active_shape & inside_eye
             is_morph_core = (edist < PUPIL_R)
 
-        char_matrix = self._ebg_frames_chars[bg_frame_idx].copy()
-        char_matrix = np.where(inside_sclera, self._esclera_chars, char_matrix)
-        char_matrix = np.where(inside_iris, self._eiris_chars, char_matrix)
+        char_matrix = np.where(inside_iris, self._eiris_chars, self._esclera_chars)
         char_matrix = np.where(inside_pupil, "#", char_matrix)
         char_matrix = np.where(is_glint, "*", char_matrix)
         char_matrix = np.where(is_lash, "=", char_matrix)
+        char_matrix = np.where(is_crease, "~", char_matrix)
 
-        if self._morph_weight > 0.02 and is_morph_shape is not None:
+        if morph_on:
             m_idx = ((self._emorph_base + self._phase * 22.0).astype(np.int32)) % len(self._morph_alphabet)
             char_matrix = np.where(is_morph_shape, self._morph_alphabet[m_idx], char_matrix)
             char_matrix = np.where(is_morph_core, "*", char_matrix)
@@ -934,16 +873,15 @@ class AsciiBackdrop:
         group_matrix[is_glint] = 3
         group_matrix[is_lash] = 5
         group_matrix[is_crease] = 6
-        if self._morph_weight > 0.02 and is_morph_shape is not None:
+        if morph_on:
             group_matrix[is_morph_shape] = 7
             group_matrix[is_morph_core] = 8
 
         char_w = self.char_w
         char_h = self.char_h
         ascent = self.ascent
-        bg_dark = QColor(2, 6, 12)
 
-        # Sadece gözün dolu olduğu satır dilimlerini temizle (arka plan karakterlerini tekrar çizmeye gerek kalmaz)
+        # Göz bölgesindeki karakter hücrelerini arka plandan temizle
         for r in range(r_min, r_max):
             nz = np.flatnonzero(group_matrix[r])
             if nz.size > 0:
@@ -956,16 +894,14 @@ class AsciiBackdrop:
                         (c_end - c_start) * char_w,
                         char_h + 1.0,
                     ),
-                    bg_dark,
+                    self._c_clear,
                 )
 
         painter.save()
         painter.setFont(self.font)
         painter.setRenderHint(QPainter.TextAntialiasing, True)
-
         c_iris = ASCII_STATE_TINT.get(self._state, ASCII_STATE_TINT["IDLE"])
 
-        # Göz katmanları
         layer_specs = (
             (1, self._c_sclera),
             (2, c_iris),
@@ -977,14 +913,21 @@ class AsciiBackdrop:
             (5, self._c_lash),
         )
         for group_id, pen_color in layer_specs:
-            if group_id in (7, 8) and self._morph_weight <= 0.02:
+            if group_id in (7, 8) and not morph_on:
                 continue
             painter.setPen(pen_color)
             for r in range(r_min, r_max):
                 mask_row = (group_matrix[r] == group_id)
                 if mask_row.any():
-                    y_pos = (r0_off + r) * char_h + ascent
-                    self._draw_masked_slice(painter, mask_row, char_matrix[r], c0_off, char_w, y_pos)
+                    idx = np.flatnonzero(mask_row)
+                    c0 = int(idx[0])
+                    c1 = int(idx[-1]) + 1
+                    sub_mask = mask_row[c0:c1]
+                    sub_ch = char_matrix[r][c0:c1]
+                    w = c1 - c0
+                    arr = np.ascontiguousarray(sub_ch if sub_mask.all() else np.where(sub_mask, sub_ch, " "))
+                    line = arr.view(f"<U{w}")[0]
+                    painter.drawText(QPointF((c0_off + c0) * char_w, (r0_off + r) * char_h + ascent), line)
 
         painter.restore()
 

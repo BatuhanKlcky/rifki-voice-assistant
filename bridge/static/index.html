@@ -94,7 +94,7 @@
       <span class="tab-ico">📱</span> Uygulamalar
     </button>
     <button type="button" class="tab" data-tab="visionDeck" role="tab" aria-selected="false">
-      <span class="tab-ico">🖥️</span> Canlı Ekran
+      <span class="tab-ico">🖥️</span> Canlı Ekran & Touchpad
     </button>
   </nav>
 
@@ -140,31 +140,7 @@
         <div class="card-hint">Yüksek Performans güç planını açar, arka plan RAM önbelleğini boşaltır ve Rıfkı HUD yükünü sıfırlar.</div>
       </div>
 
-      <!-- Canlı Siber Touchpad (Fare Kontrolü) -->
-      <div class="card">
-        <div class="card-head">
-          <h3>🖱️ Siber Touchpad (PC Fare)</h3>
-          <span class="pill" id="touchSensLabel">Hız: 1.6x</span>
-        </div>
-        <div class="touchpad-surface" id="touchpadSurface">
-          <div class="touchpad-crosshair">
-            [ DOKUN & SÜRÜKLE // FARE ]<br/>
-            <span style="font-size:10px; opacity:0.75;">Tek Dokunuş: Sol Tık · Çift Parmak: Sağ Tık</span>
-          </div>
-          <div class="touchpad-dot" id="touchpadDot"></div>
-        </div>
-        <div class="btn-row">
-          <button type="button" class="btn-sub primary" data-action="mouse_click" data-param="button:left">🖱️ Sol Tık</button>
-          <button type="button" class="btn-sub" data-action="mouse_click" data-param="button:double">⚡ Çift Tık</button>
-          <button type="button" class="btn-sub" data-action="mouse_click" data-param="button:right">🖱️ Sağ Tık</button>
-          <button type="button" class="btn-sub" data-action="mouse_scroll" data-param="dy:3" title="Yukarı Kaydır">▲</button>
-          <button type="button" class="btn-sub" data-action="mouse_scroll" data-param="dy:-3" title="Aşağı Kaydır">▼</button>
-        </div>
-        <div class="slider-row" style="margin-top:8px;">
-          <span style="font-size:11px; color:var(--muted);">Hassasiyet</span>
-          <input type="range" id="touchSensSlider" min="6" max="35" value="16" class="cyber-slider" />
-        </div>
-      </div>
+
 
       <!-- Kablosuz AirDrop (Telefon ⇄ PC Dosya Aktarımı) -->
       <div class="card">
@@ -388,6 +364,32 @@
           <p class="live-empty" id="liveEmpty">Canlı yayını başlatın veya yenileyin</p>
         </div>
         <p class="card-hint">Tam ekran görüntülemek için resme dokunun.</p>
+      </div>
+
+      <!-- Canlı Siber Touchpad (Canlı Ekran Altında Birlikte Kontrol) -->
+      <div class="card" style="margin-top: 12px; border-color: rgba(61, 240, 255, 0.45);">
+        <div class="card-head">
+          <h3>🖱️ Siber Touchpad (PC Fare Kontrolü)</h3>
+          <span class="pill" id="touchSensLabel">Hız: 1.6x</span>
+        </div>
+        <div class="touchpad-surface" id="touchpadSurface" style="min-height: 220px;">
+          <div class="touchpad-crosshair">
+            [ DOKUN & SÜRÜKLE // FARE KONTROLÜ ]<br/>
+            <span style="font-size:10px; opacity:0.85;">Tek Dokunuş: Sol Tık · Çift Parmak: Sağ Tık · Üstteki ekrana bakarak yönet</span>
+          </div>
+          <div class="touchpad-dot" id="touchpadDot"></div>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn-sub primary" data-action="mouse_click" data-param="button:left">🖱️ Sol Tık</button>
+          <button type="button" class="btn-sub" data-action="mouse_click" data-param="button:double">⚡ Çift Tık</button>
+          <button type="button" class="btn-sub" data-action="mouse_click" data-param="button:right">🖱️ Sağ Tık</button>
+          <button type="button" class="btn-sub" data-action="mouse_scroll" data-param="dy:3" title="Yukarı Kaydır">▲</button>
+          <button type="button" class="btn-sub" data-action="mouse_scroll" data-param="dy:-3" title="Aşağı Kaydır">▼</button>
+        </div>
+        <div class="slider-row" style="margin-top:8px;">
+          <span style="font-size:11px; color:var(--muted);">Hassasiyet</span>
+          <input type="range" id="touchSensSlider" min="6" max="35" value="16" class="cyber-slider" />
+        </div>
       </div>
 
       <!-- Vision AI Analiz Kartı -->

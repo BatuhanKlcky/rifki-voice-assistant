@@ -499,20 +499,9 @@ class MainWindow(QWidget):
         from tools.system import register_game_mode_callback
         register_game_mode_callback(self._notify_game_mode_from_thread)
 
-        self._ascii_tick_count = 0
         self._ascii_timer = QTimer(self)
-        self._ascii_timer.timeout.connect(self._on_ascii_tick)
-        self._ascii_timer.start(55)  # ~18 FPS akıcı ve önbellekli animasyon
-
-    def _on_ascii_tick(self):
-        self._ascii_tick_count += 1
-        if self._ascii_tick_count % 4 == 0 or not hasattr(self, "_eye_anchor") or self._eye_anchor is None:
-            self.update()
-        else:
-            anchor_pos = self._eye_anchor.mapTo(self, QPoint(0, 0))
-            cx = anchor_pos.x() + self._eye_anchor.width() // 2
-            cy = anchor_pos.y() + self._eye_anchor.height() // 2
-            self.update(cx - 420, cy - 245, 930, 445)
+        self._ascii_timer.timeout.connect(self.update)
+        self._ascii_timer.start(33)  # ~30 FPS pürüzsüz animasyon
 
     def _setup_tray_icon(self):
         icon = QIcon(_build_tray_icon_pixmap())
@@ -726,7 +715,7 @@ class MainWindow(QWidget):
     def showEvent(self, event):
         super().showEvent(event)
         if hasattr(self, "_ascii_timer") and not self._ascii_timer.isActive():
-            self._ascii_timer.start(55)
+            self._ascii_timer.start(33)
         QTimer.singleShot(0, self._anchor_to_desktop)
         if not self._listening_autostarted:
             self._listening_autostarted = True
@@ -1264,7 +1253,7 @@ class MainWindow(QWidget):
     def _apply_game_mode_hud(self, active: bool):
         self._style_game_mode_button(active)
         if hasattr(self, "_ascii_timer"):
-            self._ascii_timer.setInterval(250 if active else 55)
+            self._ascii_timer.setInterval(250 if active else 33)
 
     def _toggle_game_mode_ui(self):
         import threading
