@@ -343,9 +343,10 @@ class SpotlightWindow(QWidget):
         self.response_area.setText(reply)
         self.command_executed.emit(text, reply)
 
-        # İsteğe bağlı yerel sesli yanıt
+        # İsteğe bağlı yerel sesli yanıt (GUI thread'i dondurmamak için arka planda)
         try:
+            import threading
             from voice.text_to_speech import speak
-            speak(reply)
+            threading.Thread(target=speak, args=(reply,), daemon=True).start()
         except Exception:
             pass

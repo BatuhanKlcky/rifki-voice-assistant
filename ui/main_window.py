@@ -436,7 +436,7 @@ class MainWindow(QWidget):
         self.setAttribute(Qt.WA_NoSystemBackground, True)
 
         self.setMinimumSize(900, 600)
-        self.ascii_backdrop = AsciiBackdrop(pixel_size=11)
+        self.ascii_backdrop = AsciiBackdrop(pixel_size=12)
         self._build_ui()
         self._apply_theme()
         self._setup_tray_icon()
@@ -499,9 +499,20 @@ class MainWindow(QWidget):
         from tools.system import register_game_mode_callback
         register_game_mode_callback(self._notify_game_mode_from_thread)
 
+        self._ascii_tick_count = 0
         self._ascii_timer = QTimer(self)
-        self._ascii_timer.timeout.connect(self.update)
-        self._ascii_timer.start(45)  # ~22 FPS akıcı ve hafif animasyon
+        self._ascii_timer.timeout.connect(self._on_ascii_tick)
+        self._ascii_timer.start(55)  # ~18 FPS akıcı ve önbellekli animasyon
+
+    def _on_ascii_tick(self):
+        self._ascii_tick_count += 1
+        if self._ascii_tick_count % 4 == 0 or not hasattr(self, "_eye_anchor") or self._eye_anchor is None:
+            self.update()
+        else:
+            anchor_pos = self._eye_anchor.mapTo(self, QPoint(0, 0))
+            cx = anchor_pos.x() + self._eye_anchor.width() // 2
+            cy = anchor_pos.y() + self._eye_anchor.height() // 2
+            self.update(cx - 420, cy - 245, 930, 445)
 
     def _setup_tray_icon(self):
         icon = QIcon(_build_tray_icon_pixmap())
@@ -715,7 +726,7 @@ class MainWindow(QWidget):
     def showEvent(self, event):
         super().showEvent(event)
         if hasattr(self, "_ascii_timer") and not self._ascii_timer.isActive():
-            self._ascii_timer.start(45)
+            self._ascii_timer.start(55)
         QTimer.singleShot(0, self._anchor_to_desktop)
         if not self._listening_autostarted:
             self._listening_autostarted = True
@@ -860,7 +871,7 @@ class MainWindow(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor(2, 6, 12))
+        clip = QRectF(event.rect()) if event is not None else QRectF(self.rect())
 
         if hasattr(self, "_eye_anchor") and self._eye_anchor is not None:
             anchor_pos = self._eye_anchor.mapTo(self, QPoint(0, 0))
@@ -871,8 +882,9 @@ class MainWindow(QWidget):
             eye_center = QPointF(self.width() / 2.0, self.height() * 0.44)
 
         if hasattr(self, "ascii_backdrop") and self.ascii_backdrop is not None:
-            self.ascii_backdrop.paint(painter, self.width(), self.height(), eye_center)
+            self.ascii_backdrop.paint(painter, self.width(), self.height(), eye_center, clip_rect=clip)
         else:
+            painter.fillRect(clip, QColor(2, 6, 12))
             paint_command_deck(painter, self.rect(), glass=True)
         painter.end()
 
@@ -1252,19 +1264,29 @@ class MainWindow(QWidget):
     def _apply_game_mode_hud(self, active: bool):
         self._style_game_mode_button(active)
         if hasattr(self, "_ascii_timer"):
-            self._ascii_timer.setInterval(250 if active else 45)
+            self._ascii_timer.setInterval(250 if active else 55)
 
     def _toggle_game_mode_ui(self):
-        from tools.system import toggle_game_mode
-        msg = toggle_game_mode()
-        self.on_assistant_message(msg)
-        self._update_stats()
+        import threading
+        def _job():
+            from tools.system import toggle_game_mode
+            msg = toggle_game_mode()
+            QMetaObject.invokeMethod(
+                self, "_ui_show_assistant", Qt.QueuedConnection, Q_ARG(str, msg)
+            )
+            mobile_bridge.publish_assistant(msg)
+        threading.Thread(target=_job, daemon=True).start()
 
     def _run_ram_boost_ui(self):
-        from tools.system import optimize_system_ram
-        msg = optimize_system_ram()
-        self.on_assistant_message(msg)
-        self._update_stats()
+        import threading
+        def _job():
+            from tools.system import optimize_system_ram
+            msg = optimize_system_ram()
+            QMetaObject.invokeMethod(
+                self, "_ui_show_assistant", Qt.QueuedConnection, Q_ARG(str, msg)
+            )
+            mobile_bridge.publish_assistant(msg)
+        threading.Thread(target=_job, daemon=True).start()
 
     def _run_vision_ai(self):
         """Kullanıcı butona bastığında ekranı analiz eder ve hem HUD'a yazar hem seslendirir."""
@@ -1296,7 +1318,8 @@ class MainWindow(QWidget):
                 spoken = truncated[:last_dot + 1] if last_dot > 80 else truncated.rstrip() + "."
             else:
                 spoken = clean
-            speak(spoken)
+            import threading
+            threading.Thread(target=speak, args=(spoken,), daemon=True).start()
         except Exception as e:
             log.error(f"Vision TTS hatası: {e}")
 
