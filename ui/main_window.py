@@ -14,7 +14,7 @@ from typing import Optional
 
 import psutil
 from PyQt5.QtCore import (
-    Qt, QThread, pyqtSignal, pyqtSlot, QTimer, QPoint, QPointF, QEvent, QMetaObject, Q_ARG,
+    Qt, QThread, pyqtSignal, pyqtSlot, QTimer, QPoint, QPointF, QRectF, QEvent, QMetaObject, Q_ARG,
 )
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
