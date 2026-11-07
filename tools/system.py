@@ -59,40 +59,84 @@ def get_datetime(*args, **kwargs) -> str:
     return now.strftime("%d Kasım %Y, %H:%M:%S")
 
 
-def _grab_screenshot_image():
-    """Ekranı PIL Image olarak alır (Windows InputDesktop bağlamı + ImageGrab/pyautogui)."""
+def _get_cursor_position():
+    """Windows'ta geçerli fare imlecinin ekran koordinatlarını döndürür."""
+    if os.name == "nt":
+        try:
+            class POINT(ctypes.Structure):
+                _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+            pt = POINT()
+            if ctypes.windll.user32.GetCursorPos(ctypes.byref(pt)):
+                return int(pt.x), int(pt.y)
+        except Exception:
+            pass
+    try:
+        import pyautogui
+        pos = pyautogui.position()
+        if pos:
+            return int(pos[0]), int(pos[1])
+    except Exception:
+        pass
+    return None
+
+
+def _draw_mouse_cursor(image, cx: int, cy: int):
+    """Ekran görüntüsünün üzerine belirgin, yüksek kontrastlı fare imleci çizer."""
+    try:
+        from PIL import ImageDraw
+        # Standart Windows ok imleci poligonu (cx, cy = uç noktası)
+        points = [
+            (cx, cy),
+            (cx, cy + 20),
+            (cx + 5, cy + 16),
+            (cx + 9, cy + 25),
+            (cx + 13, cy + 23),
+            (cx + 9, cy + 14),
+            (cx + 15, cy + 14),
+        ]
+        draw = ImageDraw.Draw(image)
+        # 1. Dış siyah kenarlık (her arka planda net görünmesi için)
+        for ox in (-1, 0, 1):
+            for oy in (-1, 0, 1):
+                if ox != 0 or oy != 0:
+                    draw.polygon([(x + ox, y + oy) for x, y in points], fill="black")
+        # 2. İç siber neon dolgu (parlak cyan / beyaz)
+        draw.polygon(points, fill=(61, 240, 255))
+        # 3. Uç noktası beyaz vurgu
+        draw.point((cx, cy), fill="white")
+    except Exception as e:
+        log.warning(f"İmleç çizme uyarısı: {e}")
+
+
+def _grab_screenshot_image(include_cursor: bool = True):
+    """Ekranı PIL Image olarak alır ve Windows'ta fare imlecini görüntünün üzerine çizer."""
     hdesk = None
+    cursor_pos = None
     if os.name == "nt":
         try:
             user32 = ctypes.windll.user32
             hdesk = user32.OpenInputDesktop(0, False, 0x01FF)
             if hdesk:
                 user32.SetThreadDesktop(hdesk)
+            if include_cursor:
+                cursor_pos = _get_cursor_position()
         except Exception:
             pass
 
     errors: list[str] = []
+    image = None
     try:
         from PIL import ImageGrab
-
         image = ImageGrab.grab(all_screens=True)
-        if image is not None:
-            if hdesk:
-                ctypes.windll.user32.CloseDesktop(hdesk)
-            return image
     except Exception as e:
         errors.append(f"ImageGrab: {e}")
 
-    try:
-        import pyautogui
-
-        image = pyautogui.screenshot()
-        if image is not None:
-            if hdesk:
-                ctypes.windll.user32.CloseDesktop(hdesk)
-            return image
-    except Exception as e:
-        errors.append(f"pyautogui: {e}")
+    if image is None:
+        try:
+            import pyautogui
+            image = pyautogui.screenshot()
+        except Exception as e:
+            errors.append(f"pyautogui: {e}")
 
     if hdesk:
         try:
@@ -100,7 +144,17 @@ def _grab_screenshot_image():
         except Exception:
             pass
 
-    raise RuntimeError("; ".join(errors) or "ekran görüntüsü alınamadı")
+    if image is None:
+        raise RuntimeError("; ".join(errors) or "ekran görüntüsü alınamadı")
+
+    # Fare imlecini görüntünün üzerine işle
+    if include_cursor and cursor_pos is not None:
+        cx, cy = cursor_pos
+        w, h = image.size
+        if 0 <= cx < w and 0 <= cy < h:
+            _draw_mouse_cursor(image, cx, cy)
+
+    return image
 
 
 def capture_screenshot_png() -> bytes:
