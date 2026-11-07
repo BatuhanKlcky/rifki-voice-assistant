@@ -60,6 +60,20 @@ def get_datetime(*args, **kwargs) -> str:
     return now.strftime("%d Kasım %Y, %H:%M:%S")
 
 
+def _ensure_input_desktop() -> bool:
+    """Windows'ta geçerli iş parçacığını interaktif masaüstüne bağlar."""
+    if os.name == "nt":
+        try:
+            u32 = ctypes.windll.user32
+            hdesk = u32.OpenInputDesktop(0, False, 0x01FF)
+            if hdesk:
+                u32.SetThreadDesktop(hdesk)
+                return True
+        except Exception:
+            pass
+    return False
+
+
 def _get_cursor_position():
     """Windows'ta geçerli fare imlecinin ekran koordinatlarını döndürür."""
     if os.name == "nt":
@@ -67,14 +81,17 @@ def _get_cursor_position():
             class POINT(ctypes.Structure):
                 _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
             pt = POINT()
-            if ctypes.windll.user32.GetCursorPos(ctypes.byref(pt)):
+            u32 = ctypes.windll.user32
+            if u32.GetCursorPos(ctypes.byref(pt)):
+                return int(pt.x), int(pt.y)
+            if _ensure_input_desktop() and u32.GetCursorPos(ctypes.byref(pt)):
                 return int(pt.x), int(pt.y)
         except Exception:
             pass
     try:
         import pyautogui
         pos = pyautogui.position()
-        if pos:
+        if pos and (pos[0] != 0 or pos[1] != 0):
             return int(pos[0]), int(pos[1])
     except Exception:
         pass
@@ -222,10 +239,6 @@ class FastGDIGrabber:
         with self._lock:
             user32 = ctypes.windll.user32
             gdi32 = ctypes.windll.gdi32
-
-            hdesk = user32.OpenInputDesktop(0, False, 0x01FF)
-            if hdesk:
-                user32.SetThreadDesktop(hdesk)
             hScreenDC = None
             try:
                 hScreenDC = user32.GetDC(0)
@@ -290,8 +303,6 @@ class FastGDIGrabber:
             finally:
                 if hScreenDC:
                     user32.ReleaseDC(0, hScreenDC)
-                if hdesk:
-                    user32.CloseDesktop(hdesk)
 
 
 _fast_gdi_grabber = FastGDIGrabber()
@@ -677,7 +688,17 @@ def move_mouse_relative(dx: int, dy: int) -> str:
         dx_clamped = max(-600, min(600, int(dx)))
         dy_clamped = max(-600, min(600, int(dy)))
         if os.name == "nt":
-            ctypes.windll.user32.mouse_event(MOUSEEVENTF_MOVE, dx_clamped, dy_clamped, 0, 0)
+            u32 = ctypes.windll.user32
+            cpos = _get_cursor_position()
+            if cpos is not None:
+                sw = u32.GetSystemMetrics(0)
+                sh = u32.GetSystemMetrics(1)
+                nx = max(0, min(sw - 1, cpos[0] + dx_clamped))
+                ny = max(0, min(sh - 1, cpos[1] + dy_clamped))
+                u32.SetCursorPos(nx, ny)
+            else:
+                _ensure_input_desktop()
+                u32.mouse_event(MOUSEEVENTF_MOVE, dx_clamped, dy_clamped, 0, 0)
         else:
             import pyautogui
             pyautogui.moveRel(dx_clamped, dy_clamped)
@@ -692,6 +713,7 @@ def mouse_click(button: str = "left") -> str:
     btn = (button or "left").lower().strip()
     try:
         if os.name == "nt":
+            _ensure_input_desktop()
             u32 = ctypes.windll.user32
             if btn == "right":
                 u32.mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, 0)
@@ -728,6 +750,7 @@ def mouse_scroll(dy: int) -> str:
     try:
         steps = max(-20, min(20, int(dy)))
         if os.name == "nt":
+            _ensure_input_desktop()
             ctypes.windll.user32.mouse_event(MOUSEEVENTF_WHEEL, 0, 0, steps * 120, 0)
         else:
             import pyautogui

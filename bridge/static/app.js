@@ -823,6 +823,7 @@ async function fetchStatus() {
 
   if (touchpadSurface) {
     let tpActive = false;
+    let activePointerId = null;
     let lastX = 0;
     let lastY = 0;
     let startTime = 0;
@@ -830,12 +831,15 @@ async function fetchStatus() {
     let maxTouches = 1;
     let accumX = 0;
     let accumY = 0;
+    const activePointers = new Map();
 
     const showDot = (clientX, clientY) => {
       if (!touchpadDot) return;
       const rect = touchpadSurface.getBoundingClientRect();
-      touchpadDot.style.left = `${clientX - rect.left}px`;
-      touchpadDot.style.top = `${clientY - rect.top}px`;
+      const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
+      const y = Math.max(0, Math.min(rect.height, clientY - rect.top));
+      touchpadDot.style.left = `${x}px`;
+      touchpadDot.style.top = `${y}px`;
       touchpadDot.style.opacity = "1";
     };
 
@@ -844,81 +848,77 @@ async function fetchStatus() {
       touchpadSurface.classList.remove("active");
     };
 
-    touchpadSurface.addEventListener("touchstart", (e) => {
+    const handlePointerDown = (e) => {
       e.preventDefault();
-      tpActive = true;
-      touchpadSurface.classList.add("active");
-      const t = e.touches[0];
-      lastX = t.clientX;
-      lastY = t.clientY;
-      startTime = performance.now();
-      totalMove = 0;
-      maxTouches = Math.max(1, e.touches.length);
-      accumX = 0;
-      accumY = 0;
-      showDot(t.clientX, t.clientY);
-    }, { passive: false });
+      activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      maxTouches = Math.max(maxTouches, activePointers.size);
+      try {
+        touchpadSurface.setPointerCapture(e.pointerId);
+      } catch (_) {}
 
-    touchpadSurface.addEventListener("touchmove", (e) => {
-      if (!tpActive) return;
-      e.preventDefault();
-      if (e.touches.length > maxTouches) maxTouches = e.touches.length;
-      const t = e.touches[0];
-      const rawDx = (t.clientX - lastX) * touchSens;
-      const rawDy = (t.clientY - lastY) * touchSens;
-      lastX = t.clientX;
-      lastY = t.clientY;
-      totalMove += Math.abs(rawDx) + Math.abs(rawDy);
-      accumX += rawDx;
-      accumY += rawDy;
-      const sendDx = Math.trunc(accumX);
-      const sendDy = Math.trunc(accumY);
-      if (sendDx !== 0 || sendDy !== 0) {
-        accumX -= sendDx;
-        accumY -= sendDy;
-        sendMouseMove(sendDx, sendDy);
+      if (!tpActive) {
+        tpActive = true;
+        activePointerId = e.pointerId;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        startTime = performance.now();
+        totalMove = 0;
+        accumX = 0;
+        accumY = 0;
+        touchpadSurface.classList.add("active");
+        showDot(e.clientX, e.clientY);
       }
-      showDot(t.clientX, t.clientY);
-    }, { passive: false });
+    };
 
-    touchpadSurface.addEventListener("touchend", (e) => {
-      e.preventDefault();
+    const handlePointerMove = (e) => {
       if (!tpActive) return;
-      if (e.touches.length === 0) {
+      e.preventDefault();
+      activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (e.pointerId === activePointerId) {
+        const rawDx = (e.clientX - lastX) * touchSens;
+        const rawDy = (e.clientY - lastY) * touchSens;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        totalMove += Math.abs(rawDx) + Math.abs(rawDy);
+        accumX += rawDx;
+        accumY += rawDy;
+        const sendDx = Math.trunc(accumX);
+        const sendDy = Math.trunc(accumY);
+        if (sendDx !== 0 || sendDy !== 0) {
+          accumX -= sendDx;
+          accumY -= sendDy;
+          sendMouseMove(sendDx, sendDy);
+        }
+        showDot(e.clientX, e.clientY);
+      }
+    };
+
+    const handlePointerUp = (e) => {
+      const wasPrimary = (e.pointerId === activePointerId);
+      activePointers.delete(e.pointerId);
+      try {
+        if (touchpadSurface.hasPointerCapture(e.pointerId)) {
+          touchpadSurface.releasePointerCapture(e.pointerId);
+        }
+      } catch (_) {}
+
+      if (wasPrimary || activePointers.size === 0) {
         tpActive = false;
+        activePointerId = null;
         hideDot();
         const elapsed = performance.now() - startTime;
-        if (elapsed < 240 && totalMove < 12) {
+        if (elapsed < 260 && totalMove < 14) {
           sendMouseClick(maxTouches >= 2 ? "right" : "left");
         }
+        maxTouches = 1;
       }
-    }, { passive: false });
+    };
 
-    // Masaüstü fare ile test desteği
-    touchpadSurface.addEventListener("mousedown", (e) => {
-      tpActive = true;
-      touchpadSurface.classList.add("active");
-      lastX = e.clientX;
-      lastY = e.clientY;
-      startTime = performance.now();
-      totalMove = 0;
-      showDot(e.clientX, e.clientY);
-    });
-    window.addEventListener("mousemove", (e) => {
-      if (!tpActive || e.touches) return;
-      const dx = Math.round((e.clientX - lastX) * touchSens);
-      const dy = Math.round((e.clientY - lastY) * touchSens);
-      lastX = e.clientX;
-      lastY = e.clientY;
-      totalMove += Math.abs(dx) + Math.abs(dy);
-      if (dx !== 0 || dy !== 0) sendMouseMove(dx, dy);
-      showDot(e.clientX, e.clientY);
-    });
-    window.addEventListener("mouseup", () => {
-      if (!tpActive) return;
-      tpActive = false;
-      hideDot();
-    });
+    touchpadSurface.addEventListener("pointerdown", handlePointerDown);
+    touchpadSurface.addEventListener("pointermove", handlePointerMove);
+    touchpadSurface.addEventListener("pointerup", handlePointerUp);
+    touchpadSurface.addEventListener("pointercancel", handlePointerUp);
   }
 
   // Kablosuz AirDrop (Telefon ⇄ PC Dosya Aktarımı)
@@ -1167,12 +1167,12 @@ async function fetchStatus() {
 
   function getModeParams() {
     if (liveMode === "ultra") {
-      // Turbo 30+ FPS: 640px, Q42, 0ms taban gecikme (18ms GDI + WS)
-      return { w: 640, q: 42, minDelay: 0 };
+      // Turbo 30+ FPS: 640px, Q42, 12ms taban gecikme (WS soketini tıkamadan akıcı fare & ekran)
+      return { w: 640, q: 42, minDelay: 12 };
     }
     if (liveMode === "balanced") {
-      // Akıcı 20 FPS: 768px, Q50, 20ms gecikme
-      return { w: 768, q: 50, minDelay: 20 };
+      // Akıcı 20 FPS: 768px, Q50, 25ms gecikme
+      return { w: 768, q: 50, minDelay: 25 };
     }
     // HD: 1024px, Q65, 80ms gecikme
     return { w: 1024, q: 65, minDelay: 80 };

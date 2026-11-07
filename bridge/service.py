@@ -697,6 +697,31 @@ class MobileBridge:
         await ws.prepare(request)
         self._clients.add(ws)
         await ws.send_str(json.dumps({"type": "hello", **self.status_payload()}, ensure_ascii=False))
+
+        # Bağımsız ekran akış kuyruğu: fare ve touchpad komutlarını asla bekletmez
+        frame_queue: asyncio.Queue[tuple[int, int]] = asyncio.Queue(maxsize=1)
+
+        async def _screen_worker():
+            loop = asyncio.get_running_loop()
+            while not ws.closed:
+                try:
+                    w, q = await frame_queue.get()
+                    jpeg = await loop.run_in_executor(
+                        None,
+                        lambda: system.capture_screenshot_for_mobile(
+                            max_width=w, quality=q, fast=True, all_screens=False
+                        ),
+                    )
+                    if jpeg and not ws.closed:
+                        await ws.send_bytes(jpeg)
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    log.debug(f"WS ekran akış hatası: {e}")
+                    await asyncio.sleep(0.05)
+
+        screen_task = asyncio.create_task(_screen_worker())
+
         try:
             async for msg in ws:
                 if msg.type == WSMsgType.TEXT:
@@ -705,9 +730,7 @@ class MobileBridge:
                     except json.JSONDecodeError:
                         continue
                     mtype = data.get("type")
-                    if mtype == "ping":
-                        await ws.send_str(json.dumps({"type": "pong"}))
-                    elif mtype == "mouse_move":
+                    if mtype == "mouse_move":
                         system.move_mouse_relative(int(data.get("dx") or 0), int(data.get("dy") or 0))
                     elif mtype == "mouse_click":
                         system.mouse_click(str(data.get("button") or "left"))
@@ -716,21 +739,21 @@ class MobileBridge:
                     elif mtype == "screen_frame_request":
                         w = int(data.get("w") or 640)
                         q = int(data.get("q") or 45)
+                        if frame_queue.full():
+                            try:
+                                frame_queue.get_nowait()
+                            except asyncio.QueueEmpty:
+                                pass
                         try:
-                            loop = asyncio.get_running_loop()
-                            jpeg = await loop.run_in_executor(
-                                None,
-                                lambda: system.capture_screenshot_for_mobile(
-                                    max_width=w, quality=q, fast=True, all_screens=False
-                                ),
-                            )
-                            if jpeg and not ws.closed:
-                                await ws.send_bytes(jpeg)
-                        except Exception as e:
-                            log.debug(f"WS ekran çerçeve hatası: {e}")
+                            frame_queue.put_nowait((w, q))
+                        except asyncio.QueueFull:
+                            pass
+                    elif mtype == "ping":
+                        await ws.send_str(json.dumps({"type": "pong"}))
                 elif msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
                     break
         finally:
+            screen_task.cancel()
             self._clients.discard(ws)
         return ws
 
