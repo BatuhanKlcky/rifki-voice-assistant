@@ -7,14 +7,14 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>RIFKI Siber Kokpit</title>
-  <link rel="stylesheet" href="/static/style.css?v=2.6.1" />
+  <link rel="stylesheet" href="/static/style.css?v=2.6.2" />
 </head>
 <body>
   <!-- Top Cockpit Bar -->
   <header class="top-bar">
     <div class="brand">
       <div class="kicker-row">
-        <span class="brand-tag">SYS.2.6.1</span>
+        <span class="brand-tag">SYS.2.6.2</span>
         <span class="brand-sub">NEON HUD</span>
       </div>
       <h1 class="brand-title">RIFKI <span>// SİBER KÖPRÜ</span></h1>
@@ -364,11 +364,12 @@
         </div>
         <div class="live-mode-row">
           <span style="font-size:11px; color:var(--muted); font-weight:600;">Mod:</span>
-          <button type="button" class="btn-sub active" id="btnModeUltra" title="Minimum gecikme, tam canlı gibi akıcı ekran (~20 FPS, 50ms)">⚡ Ultra Canlı</button>
-          <button type="button" class="btn-sub" id="btnModeBalanced" title="Dengeli hız ve kalite (~10 FPS)">🎯 Dengeli</button>
-          <button type="button" class="btn-sub" id="btnModeHd" title="Yüksek çözünürlük net görüntü (3 FPS)">💎 HD Detay</button>
+          <button type="button" class="btn-sub active" id="btnModeUltra" title="WebSocket donanım hızlandırmalı gerçek zamanlı akış (30+ FPS, ~20ms gecikme)">⚡ Turbo (30+ FPS)</button>
+          <button type="button" class="btn-sub" id="btnModeBalanced" title="Dengeli hız ve netlik (20 FPS)">🎯 Akıcı (20 FPS)</button>
+          <button type="button" class="btn-sub" id="btnModeHd" title="Yüksek çözünürlük detaylı görüntü (10 FPS)">💎 HD Detay</button>
         </div>
         <div class="live-frame">
+          <canvas id="liveCanvas" style="width:100%; height:auto; display:none; border-radius:8px; cursor:pointer;"></canvas>
           <img id="liveImg" alt="PC ekranı" hidden />
           <p class="live-empty" id="liveEmpty">Canlı yayını başlatın veya yenileyin</p>
         </div>
@@ -462,6 +463,6 @@
     <p class="lightbox-hint">Kapatmak için dokunun</p>
   </div>
 
-  <script src="/static/app.js?v=2.6.1"></script>
+  <script src="/static/app.js?v=2.6.2"></script>
 </body>
 </html>

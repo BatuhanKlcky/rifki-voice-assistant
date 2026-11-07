@@ -56,6 +56,7 @@
   const appSearch = document.getElementById("appSearch");
   const appsList = document.getElementById("appsList");
   const appsMeta = document.getElementById("appsMeta");
+  const liveCanvas = document.getElementById("liveCanvas");
   const liveImg = document.getElementById("liveImg");
   const liveEmpty = document.getElementById("liveEmpty");
   const btnLiveToggle = document.getElementById("btnLiveToggle");
@@ -1134,15 +1135,16 @@ async function fetchStatus() {
   }
 
   // =========================================================================
-  // 6. CANLI EKRAN MOTORU (ULTRA-LOW LATENCY STREAM & ADAPTIVE FRAME LOOP)
+  // 6. CANLI EKRAN MOTORU (WEBSOCKET TURBO STREAM & CANVAS GPU ACCELERATION)
   // =========================================================================
-  let liveMode = "ultra"; // "ultra" | "balanced" | "hd"
+  let liveMode = "ultra"; // "ultra" (30+ FPS) | "balanced" (20 FPS) | "hd" (10 FPS)
   let liveObjectUrl = null;
   let liveFrameCount = 0;
   let liveFpsLastCheck = performance.now();
   let liveCurrentFps = 0;
   let liveLatencyMs = 0;
   let livePendingFetch = false;
+  let lastWsFrameRequestTime = 0;
 
   const btnModeUltra = document.getElementById("btnModeUltra");
   const btnModeBalanced = document.getElementById("btnModeBalanced");
@@ -1165,22 +1167,22 @@ async function fetchStatus() {
 
   function getModeParams() {
     if (liveMode === "ultra") {
-      // Ultra Hızlı: 768px, Q48, ~20 FPS, ~45-60ms gecikme
-      return { w: 768, q: 48, minDelay: 5 };
+      // Turbo 30+ FPS: 640px, Q42, 0ms taban gecikme (18ms GDI + WS)
+      return { w: 640, q: 42, minDelay: 0 };
     }
     if (liveMode === "balanced") {
-      // Dengeli: 960px, Q58, ~12 FPS, ~75ms gecikme
-      return { w: 960, q: 58, minDelay: 45 };
+      // Akıcı 20 FPS: 768px, Q50, 20ms gecikme
+      return { w: 768, q: 50, minDelay: 20 };
     }
-    // HD: 1280px, Q72, ~4 FPS (yüksek detay)
-    return { w: 1280, q: 72, minDelay: 180 };
+    // HD: 1024px, Q65, 80ms gecikme
+    return { w: 1024, q: 65, minDelay: 80 };
   }
 
   function updateLiveStats(latency) {
     liveFrameCount++;
     const now = performance.now();
     const elapsed = now - liveFpsLastCheck;
-    if (elapsed >= 800) {
+    if (elapsed >= 700) {
       liveCurrentFps = Math.round((liveFrameCount * 1000) / elapsed);
       liveFrameCount = 0;
       liveFpsLastCheck = now;
@@ -1191,8 +1193,81 @@ async function fetchStatus() {
     }
   }
 
+  async function renderLiveBlob(blob) {
+    // 1. Tercihen modern GPU Canvas ImageBitmap ile sıfır DOM yüküyle çiz
+    if (typeof createImageBitmap === "function" && liveCanvas) {
+      try {
+        const bmp = await createImageBitmap(blob);
+        if (liveCanvas.width !== bmp.width || liveCanvas.height !== bmp.height) {
+          liveCanvas.width = bmp.width;
+          liveCanvas.height = bmp.height;
+        }
+        const c2d = liveCanvas.getContext("2d", { alpha: false });
+        c2d.drawImage(bmp, 0, 0);
+        bmp.close();
+        liveCanvas.style.display = "block";
+        if (liveImg) liveImg.hidden = true;
+        if (liveEmpty) liveEmpty.hidden = true;
+        return;
+      } catch (_) {}
+    }
+
+    // 2. Yedek: Standart Image ObjectURL
+    const newUrl = URL.createObjectURL(blob);
+    const oldUrl = liveObjectUrl;
+    liveObjectUrl = newUrl;
+    if (liveImg) {
+      liveImg.src = newUrl;
+      liveImg.hidden = false;
+    }
+    if (liveCanvas) liveCanvas.style.display = "none";
+    if (liveEmpty) liveEmpty.hidden = true;
+    if (oldUrl) URL.revokeObjectURL(oldUrl);
+  }
+
+  // WebSocket Binary Frame Alıcı
+  async function handleLiveBinaryFrame(data) {
+    if (!liveOn) return;
+    const blob = data instanceof Blob ? data : new Blob([data], { type: "image/jpeg" });
+    await renderLiveBlob(blob);
+
+    const now = performance.now();
+    if (lastWsFrameRequestTime > 0) {
+      liveLatencyMs = Math.round(now - lastWsFrameRequestTime);
+      updateLiveStats(liveLatencyMs);
+    }
+
+    if (liveOn && ws && ws.readyState === WebSocket.OPEN) {
+      const { minDelay } = getModeParams();
+      if (minDelay <= 0) {
+        requestAnimationFrame(requestNextWsFrame);
+      } else {
+        setTimeout(requestNextWsFrame, minDelay);
+      }
+    }
+  }
+
+  function requestNextWsFrame() {
+    if (!liveOn) return;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      const { w, q } = getModeParams();
+      lastWsFrameRequestTime = performance.now();
+      ws.send(JSON.stringify({ type: "screen_frame_request", w, q }));
+    } else {
+      // WS kapalıysa otomatik HTTP döngüsüne düş
+      fetchLiveFrame();
+    }
+  }
+
+  // HTTP Yedek Çerçeve Döngüsü (WS bağlı değilse kullanılır)
   async function fetchLiveFrame() {
     if (!token || !liveOn || livePendingFetch) return;
+    // Eğer WS aktifse HTTP yerine doğrudan WS kullan
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      requestNextWsFrame();
+      return;
+    }
+
     livePendingFetch = true;
     const { w, q, minDelay } = getModeParams();
     const t0 = performance.now();
@@ -1205,18 +1280,7 @@ async function fetchStatus() {
       if (!res.ok) throw new Error("HTTP " + res.status);
 
       const blob = await res.blob();
-      const newUrl = URL.createObjectURL(blob);
-      const oldUrl = liveObjectUrl;
-      liveObjectUrl = newUrl;
-
-      if (liveImg) {
-        liveImg.src = newUrl;
-        liveImg.hidden = false;
-      }
-      if (liveEmpty) liveEmpty.hidden = true;
-
-      // Tarayıcı belleğini temiz tut: eski blob nesnesini anında serbest bırak
-      if (oldUrl) URL.revokeObjectURL(oldUrl);
+      await renderLiveBlob(blob);
 
       const t1 = performance.now();
       liveLatencyMs = Math.round(t1 - t0);
@@ -1225,19 +1289,23 @@ async function fetchStatus() {
       livePendingFetch = false;
       if (liveOn) {
         const fetchDuration = t1 - t0;
-        const sleepTime = Math.max(5, minDelay - Math.floor(fetchDuration));
+        const sleepTime = Math.max(0, minDelay - Math.floor(fetchDuration));
         setTimeout(fetchLiveFrame, sleepTime);
       }
     } catch (err) {
       livePendingFetch = false;
       if (liveOn) {
-        setTimeout(fetchLiveFrame, 300);
+        setTimeout(fetchLiveFrame, 250);
       }
     }
   }
 
   async function refreshLive() {
     if (!token) return;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      requestNextWsFrame();
+      return;
+    }
     const { w, q } = getModeParams();
     try {
       const res = await fetch(`/api/screenshot?live=1&fast=1&w=${w}&q=${q}&t=${Date.now()}`, {
@@ -1246,15 +1314,7 @@ async function fetchStatus() {
       });
       if (!res.ok) return;
       const blob = await res.blob();
-      const newUrl = URL.createObjectURL(blob);
-      const oldUrl = liveObjectUrl;
-      liveObjectUrl = newUrl;
-      if (liveImg) {
-        liveImg.src = newUrl;
-        liveImg.hidden = false;
-      }
-      if (liveEmpty) liveEmpty.hidden = true;
-      if (oldUrl) URL.revokeObjectURL(oldUrl);
+      await renderLiveBlob(blob);
     } catch (_) {}
   }
 
@@ -1271,12 +1331,24 @@ async function fetchStatus() {
         livePendingFetch = false;
         liveFrameCount = 0;
         liveFpsLastCheck = performance.now();
-        fetchLiveFrame();
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          requestNextWsFrame();
+        } else {
+          fetchLiveFrame();
+        }
       }
     });
   }
   if (btnLiveRefresh) {
     btnLiveRefresh.addEventListener("click", refreshLive);
+  }
+  if (liveCanvas) {
+    liveCanvas.addEventListener("click", () => {
+      try {
+        const url = liveCanvas.toDataURL("image/jpeg", 0.9);
+        openLightbox(url);
+      } catch (_) {}
+    });
   }
   if (liveImg) {
     liveImg.addEventListener("click", () => {
@@ -1456,7 +1528,13 @@ async function fetchStatus() {
       fetchVolume();
     };
 
-    ws.onmessage = (e) => {
+    ws.onmessage = async (e) => {
+      if (e.data instanceof Blob || e.data instanceof ArrayBuffer) {
+        if (typeof handleLiveBinaryFrame === "function") {
+          await handleLiveBinaryFrame(e.data);
+        }
+        return;
+      }
       try {
         const msg = JSON.parse(e.data);
         if (msg.type === "status" || msg.state) {

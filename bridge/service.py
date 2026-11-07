@@ -713,6 +713,21 @@ class MobileBridge:
                         system.mouse_click(str(data.get("button") or "left"))
                     elif mtype == "mouse_scroll":
                         system.mouse_scroll(int(data.get("dy") or 0))
+                    elif mtype == "screen_frame_request":
+                        w = int(data.get("w") or 640)
+                        q = int(data.get("q") or 45)
+                        try:
+                            loop = asyncio.get_running_loop()
+                            jpeg = await loop.run_in_executor(
+                                None,
+                                lambda: system.capture_screenshot_for_mobile(
+                                    max_width=w, quality=q, fast=True, all_screens=False
+                                ),
+                            )
+                            if jpeg and not ws.closed:
+                                await ws.send_bytes(jpeg)
+                        except Exception as e:
+                            log.debug(f"WS ekran çerçeve hatası: {e}")
                 elif msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
                     break
         finally:
