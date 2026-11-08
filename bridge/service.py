@@ -695,6 +695,13 @@ class MobileBridge:
             return web.Response(text="yetkisiz", status=401)
         ws = web.WebSocketResponse(heartbeat=30)
         await ws.prepare(request)
+        try:
+            sock = request.transport.get_extra_info("socket")
+            if sock:
+                import socket
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except Exception:
+            pass
         self._clients.add(ws)
         await ws.send_str(json.dumps({"type": "hello", **self.status_payload()}, ensure_ascii=False))
 

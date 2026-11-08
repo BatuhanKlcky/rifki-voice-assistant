@@ -795,7 +795,7 @@ async function fetchStatus() {
   const touchpadDot = document.getElementById("touchpadDot");
   const touchSensSlider = document.getElementById("touchSensSlider");
   const touchSensLabel = document.getElementById("touchSensLabel");
-  let touchSens = 1.6;
+  let touchSens = 2.4; // Hızlı, akıcı ve senkron varsayılan hız
 
   if (touchSensSlider) {
     touchSensSlider.addEventListener("input", () => {
@@ -804,8 +804,18 @@ async function fetchStatus() {
     });
   }
 
-  function sendMouseMove(dx, dy) {
-    if (!dx && !dy) return;
+  // Akıcı rAF Fare Gönderim Hattı (Frame Refresh Senkronizasyonu)
+  let pendingDx = 0;
+  let pendingDy = 0;
+  let mouseRafPending = false;
+
+  function flushMouseMove() {
+    mouseRafPending = false;
+    const dx = pendingDx;
+    const dy = pendingDy;
+    pendingDx = 0;
+    pendingDy = 0;
+    if (dx === 0 && dy === 0) return;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "mouse_move", dx, dy }));
     } else {
@@ -813,7 +823,18 @@ async function fetchStatus() {
     }
   }
 
+  function sendMouseMove(dx, dy) {
+    if (!dx && !dy) return;
+    pendingDx += dx;
+    pendingDy += dy;
+    if (!mouseRafPending) {
+      mouseRafPending = true;
+      requestAnimationFrame(flushMouseMove);
+    }
+  }
+
   function sendMouseClick(button) {
+    flushMouseMove(); // Tıklamadan önce bekleyen hareketleri gönder
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "mouse_click", button }));
     } else {
@@ -826,6 +847,7 @@ async function fetchStatus() {
     let activePointerId = null;
     let lastX = 0;
     let lastY = 0;
+    let lastMoveTime = 0;
     let startTime = 0;
     let totalMove = 0;
     let maxTouches = 1;
@@ -861,7 +883,8 @@ async function fetchStatus() {
         activePointerId = e.pointerId;
         lastX = e.clientX;
         lastY = e.clientY;
-        startTime = performance.now();
+        lastMoveTime = performance.now();
+        startTime = lastMoveTime;
         totalMove = 0;
         accumX = 0;
         accumY = 0;
@@ -876,11 +899,30 @@ async function fetchStatus() {
       activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
       if (e.pointerId === activePointerId) {
-        const rawDx = (e.clientX - lastX) * touchSens;
-        const rawDy = (e.clientY - lastY) * touchSens;
+        const now = performance.now();
+        const dt = Math.max(1, now - (lastMoveTime || now));
+        lastMoveTime = now;
+
+        const rawDeltaX = e.clientX - lastX;
+        const rawDeltaY = e.clientY - lastY;
         lastX = e.clientX;
         lastY = e.clientY;
-        totalMove += Math.abs(rawDx) + Math.abs(rawDy);
+
+        const dist = Math.hypot(rawDeltaX, rawDeltaY);
+        const speed = dist / dt; // px/ms
+
+        // Doğal dokunmatik yüzey ivmelenmesi (Akıcı Ballistics Curve):
+        // Yavaş parmak: 1.0x (hassas tıklama & piksel seçimi)
+        // Hızlı parmak: 2.8x'e kadar dinamik hızlanma (ekranı tek dokunuşla kat etme)
+        let accel = 1.0;
+        if (speed > 0.12) {
+          accel = 1.0 + Math.min(2.8, (speed - 0.12) * 2.2);
+        }
+
+        const rawDx = rawDeltaX * touchSens * accel;
+        const rawDy = rawDeltaY * touchSens * accel;
+
+        totalMove += Math.abs(rawDeltaX) + Math.abs(rawDeltaY);
         accumX += rawDx;
         accumY += rawDy;
         const sendDx = Math.trunc(accumX);
@@ -907,6 +949,7 @@ async function fetchStatus() {
         tpActive = false;
         activePointerId = null;
         hideDot();
+        flushMouseMove();
         const elapsed = performance.now() - startTime;
         if (elapsed < 260 && totalMove < 14) {
           sendMouseClick(maxTouches >= 2 ? "right" : "left");

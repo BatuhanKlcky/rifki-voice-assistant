@@ -685,20 +685,11 @@ def type_text_to_pc(text: str) -> str:
 def move_mouse_relative(dx: int, dy: int) -> str:
     """PC fare imlecini göreceli olarak (dx, dy piksel) hareket ettirir."""
     try:
-        dx_clamped = max(-600, min(600, int(dx)))
-        dy_clamped = max(-600, min(600, int(dy)))
+        dx_clamped = max(-1000, min(1000, int(dx)))
+        dy_clamped = max(-1000, min(1000, int(dy)))
         if os.name == "nt":
-            u32 = ctypes.windll.user32
-            cpos = _get_cursor_position()
-            if cpos is not None:
-                sw = u32.GetSystemMetrics(0)
-                sh = u32.GetSystemMetrics(1)
-                nx = max(0, min(sw - 1, cpos[0] + dx_clamped))
-                ny = max(0, min(sh - 1, cpos[1] + dy_clamped))
-                u32.SetCursorPos(nx, ny)
-            else:
-                _ensure_input_desktop()
-                u32.mouse_event(MOUSEEVENTF_MOVE, dx_clamped, dy_clamped, 0, 0)
+            _ensure_input_desktop()
+            ctypes.windll.user32.mouse_event(MOUSEEVENTF_MOVE, dx_clamped, dy_clamped, 0, 0)
         else:
             import pyautogui
             pyautogui.moveRel(dx_clamped, dy_clamped)
