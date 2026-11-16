@@ -26,6 +26,12 @@ exec(_src.replace(_old, _new, 1), build_main.__dict__)
 
 datas = collect_data_files("piper")
 binaries = collect_dynamic_libs("piper")
+try:
+    datas += collect_data_files("aiortc")
+    binaries += collect_dynamic_libs("av")
+    datas += collect_data_files("av")
+except Exception:
+    pass
 datas += [(str(Path(SPECPATH) / "bridge" / "static"), "bridge/static")]
 _cf = Path(SPECPATH) / "tools" / "cloudflared.exe"
 if _cf.is_file():
@@ -66,6 +72,16 @@ hiddenimports = [
     "bridge.service",
     "bridge.pairing",
     "bridge.remote_actions",
+    "bridge.webrtc_stream",
+    "aiortc",
+    "aiortc.codecs",
+    "aiortc.codecs.h264",
+    "aiortc.codecs.vpx",
+    "av",
+    "av.codec",
+    "av.video",
+    "aioice",
+    "pylibsrtp",
     "core.version",
     "core.updater",
     "tools.media",

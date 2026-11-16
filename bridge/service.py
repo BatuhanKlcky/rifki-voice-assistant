@@ -221,6 +221,8 @@ class MobileBridge:
         app.router.add_get("/api/apps", self._handle_apps)
         app.router.add_post("/api/apps/launch", self._handle_apps_launch)
         app.router.add_post("/api/remote", self._handle_remote)
+        app.router.add_post("/api/webrtc/offer", self._handle_webrtc_offer)
+        app.router.add_post("/api/webrtc/candidate", self._handle_webrtc_candidate)
         app.router.add_get("/api/volume", self._handle_volume)
         app.router.add_get("/api/telemetry", self._handle_telemetry)
         app.router.add_get("/api/tts", self._handle_tts)
@@ -687,6 +689,41 @@ class MobileBridge:
             },
         )
 
+    async def _handle_webrtc_offer(self, request):
+        from aiohttp import web
+        if not self._token_ok(request):
+            return web.json_response({"error": "yetkisiz"}, status=401)
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"error": "geçersiz json"}, status=400)
+        sdp = body.get("sdp", "")
+        sdp_type = body.get("type", "offer")
+        w = int(body.get("w") or 800)
+        fps = int(body.get("fps") or 30)
+        from bridge.webrtc_stream import webrtc_manager
+        try:
+            pc, answer_dict = await webrtc_manager.handle_offer(sdp, sdp_type, max_width=w, fps=fps)
+            return web.json_response({"ok": True, **answer_dict})
+        except Exception as e:
+            log.error(f"HTTP WebRTC offer hatası: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_webrtc_candidate(self, request):
+        from aiohttp import web
+        if not self._token_ok(request):
+            return web.json_response({"error": "yetkisiz"}, status=401)
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"error": "geçersiz json"}, status=400)
+        candidate = body.get("candidate")
+        from bridge.webrtc_stream import webrtc_manager
+        pcs = list(webrtc_manager._pcs)
+        if pcs and candidate:
+            await webrtc_manager.handle_candidate(pcs[-1], candidate)
+        return web.json_response({"ok": True})
+
     async def _handle_ws(self, request):
         from aiohttp import WSMsgType, web
         from tools import system
@@ -704,6 +741,8 @@ class MobileBridge:
             pass
         self._clients.add(ws)
         await ws.send_str(json.dumps({"type": "hello", **self.status_payload()}, ensure_ascii=False))
+
+        ws_webrtc_pc = None
 
         # Bağımsız ekran akış kuyruğu: fare ve touchpad komutlarını asla bekletmez
         frame_queue: asyncio.Queue[tuple[int, int]] = asyncio.Queue(maxsize=1)
@@ -755,12 +794,41 @@ class MobileBridge:
                             frame_queue.put_nowait((w, q))
                         except asyncio.QueueFull:
                             pass
+                    elif mtype == "webrtc_offer":
+                        from bridge.webrtc_stream import webrtc_manager
+                        if ws_webrtc_pc:
+                            await webrtc_manager.close_pc(ws_webrtc_pc)
+                        sdp = data.get("sdp", "")
+                        sdp_type = data.get("type_sdp", "offer")
+                        w = int(data.get("w") or 800)
+                        fps = int(data.get("fps") or 30)
+                        try:
+                            ws_webrtc_pc, answer_dict = await webrtc_manager.handle_offer(
+                                sdp, sdp_type, max_width=w, fps=fps
+                            )
+                            await ws.send_str(json.dumps({
+                                "type": "webrtc_answer",
+                                **answer_dict
+                            }))
+                        except Exception as e:
+                            log.error(f"WS WebRTC offer hatası: {e}")
+                            await ws.send_str(json.dumps({
+                                "type": "webrtc_error",
+                                "error": str(e)
+                            }))
+                    elif mtype == "webrtc_candidate":
+                        from bridge.webrtc_stream import webrtc_manager
+                        if ws_webrtc_pc and data.get("candidate"):
+                            await webrtc_manager.handle_candidate(ws_webrtc_pc, data.get("candidate"))
                     elif mtype == "ping":
                         await ws.send_str(json.dumps({"type": "pong"}))
                 elif msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
                     break
         finally:
             screen_task.cancel()
+            if ws_webrtc_pc:
+                from bridge.webrtc_stream import webrtc_manager
+                asyncio.create_task(webrtc_manager.close_pc(ws_webrtc_pc))
             self._clients.discard(ws)
         return ws
 

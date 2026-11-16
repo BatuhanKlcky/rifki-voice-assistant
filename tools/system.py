@@ -304,8 +304,87 @@ class FastGDIGrabber:
                 if hScreenDC:
                     user32.ReleaseDC(0, hScreenDC)
 
+    def grab_raw_image(self, max_width: int = 1024, include_cursor: bool = True):
+        """WebRTC video akışı için PIL Image döndürür (JPEG sıkıştırma maliyeti olmadan)."""
+        with self._lock:
+            user32 = ctypes.windll.user32
+            gdi32 = ctypes.windll.gdi32
+            hScreenDC = None
+            try:
+                hScreenDC = user32.GetDC(0)
+                if not hScreenDC:
+                    return None
+                src_w = user32.GetSystemMetrics(0)
+                src_h = user32.GetSystemMetrics(1)
+                if src_w <= 0 or src_h <= 0:
+                    return None
+
+                target_w = min(max_width, src_w)
+                target_h = max(1, int(src_h * (target_w / float(src_w))))
+                target_w = (target_w // 4) * 4
+
+                if self._w != target_w or self._h != target_h or not self._hDIB:
+                    self._cleanup()
+                    bmi = _BITMAPINFOHEADER()
+                    bmi.biSize = ctypes.sizeof(_BITMAPINFOHEADER)
+                    bmi.biWidth = target_w
+                    bmi.biHeight = -target_h
+                    bmi.biPlanes = 1
+                    bmi.biBitCount = 32
+                    bmi.biCompression = 0
+                    self._hMemDC = gdi32.CreateCompatibleDC(hScreenDC)
+                    self._hDIB = gdi32.CreateDIBSection(
+                        self._hMemDC, ctypes.byref(bmi), 0, ctypes.byref(self._p_bits), None, 0
+                    )
+                    if not self._hDIB or not self._p_bits.value:
+                        self._cleanup()
+                        return None
+                    gdi32.SelectObject(self._hMemDC, self._hDIB)
+                    gdi32.SetStretchBltMode(self._hMemDC, 3)
+                    self._w = target_w
+                    self._h = target_h
+                    self._raw_buf = (ctypes.c_char * (target_w * target_h * 4)).from_address(self._p_bits.value)
+
+                success = gdi32.StretchBlt(
+                    self._hMemDC, 0, 0, target_w, target_h, hScreenDC, 0, 0, src_w, src_h, 0x00CC0020 | 0x40000000
+                )
+                if not success:
+                    return None
+
+                from PIL import Image as _PILImage
+                img = _PILImage.frombuffer("RGBA", (target_w, target_h), self._raw_buf, "raw", "BGRA", 0, 1)
+
+                if include_cursor:
+                    cpos = _get_cursor_position()
+                    if cpos is not None:
+                        cx = int(cpos[0] * target_w / float(src_w))
+                        cy = int(cpos[1] * target_h / float(src_h))
+                        _draw_mouse_cursor(img, cx, cy)
+
+                return img.copy()
+            except Exception as e:
+                log.debug(f"Fast GDI grab_raw_image hatası: {e}")
+                return None
+            finally:
+                if hScreenDC:
+                    user32.ReleaseDC(0, hScreenDC)
+
 
 _fast_gdi_grabber = FastGDIGrabber()
+
+
+def capture_raw_image_for_webrtc(max_width: int = 1024, include_cursor: bool = True):
+    """WebRTC video akışı için ekran görüntüsünü PIL Image olarak döndürür."""
+    if os.name == "nt":
+        img = _fast_gdi_grabber.grab_raw_image(max_width=max_width, include_cursor=include_cursor)
+        if img is not None:
+            return img
+    img = _grab_screenshot_image(include_cursor=include_cursor, all_screens=False)
+    if img and img.width > max_width:
+        ratio = max_width / float(img.width)
+        nh = max(1, int(img.height * ratio))
+        img = img.resize((max_width, nh))
+    return img
 
 
 def capture_screenshot_for_mobile(

@@ -1178,9 +1178,9 @@ async function fetchStatus() {
   }
 
   // =========================================================================
-  // 6. CANLI EKRAN MOTORU (WEBSOCKET TURBO STREAM & CANVAS GPU ACCELERATION)
+  // 6. CANLI EKRAN MOTORU (WEBRTC H.264 DONANIMSAL & WEBSOCKET TURBO YEDEK)
   // =========================================================================
-  let liveMode = "ultra"; // "ultra" (30+ FPS) | "balanced" (20 FPS) | "hd" (10 FPS)
+  let liveMode = "webrtc"; // "webrtc" (H.264 Donanımsal) | "ultra" (Turbo WS) | "balanced" | "hd"
   let liveObjectUrl = null;
   let liveFrameCount = 0;
   let liveFpsLastCheck = performance.now();
@@ -1189,24 +1189,168 @@ async function fetchStatus() {
   let livePendingFetch = false;
   let lastWsFrameRequestTime = 0;
 
+  // WebRTC Bileşenleri
+  let webrtcPc = null;
+  let webrtcActive = false;
+  const liveVideo = document.getElementById("liveVideo");
+  const btnModeWebRTC = document.getElementById("btnModeWebRTC");
   const btnModeUltra = document.getElementById("btnModeUltra");
   const btnModeBalanced = document.getElementById("btnModeBalanced");
   const btnModeHd = document.getElementById("btnModeHd");
   const liveFpsBadge = document.getElementById("liveFpsBadge");
 
   function setLiveMode(mode) {
+    const prevMode = liveMode;
     liveMode = mode;
-    [btnModeUltra, btnModeBalanced, btnModeHd].forEach((btn) => {
+    [btnModeWebRTC, btnModeUltra, btnModeBalanced, btnModeHd].forEach((btn) => {
       if (btn) btn.classList.remove("active");
     });
+    if (mode === "webrtc" && btnModeWebRTC) btnModeWebRTC.classList.add("active");
     if (mode === "ultra" && btnModeUltra) btnModeUltra.classList.add("active");
     if (mode === "balanced" && btnModeBalanced) btnModeBalanced.classList.add("active");
     if (mode === "hd" && btnModeHd) btnModeHd.classList.add("active");
+
+    if (mode === "webrtc") {
+      if (liveOn && !webrtcActive) {
+        startWebRTC();
+      }
+    } else {
+      stopWebRTC();
+      if (liveOn) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          requestNextWsFrame();
+        } else {
+          fetchLiveFrame();
+        }
+      }
+    }
   }
 
+  if (btnModeWebRTC) btnModeWebRTC.addEventListener("click", () => setLiveMode("webrtc"));
   if (btnModeUltra) btnModeUltra.addEventListener("click", () => setLiveMode("ultra"));
   if (btnModeBalanced) btnModeBalanced.addEventListener("click", () => setLiveMode("balanced"));
   if (btnModeHd) btnModeHd.addEventListener("click", () => setLiveMode("hd"));
+
+  // WebRTC H.264 Donanımsal Akış Başlatıcı
+  async function startWebRTC() {
+    if (!liveOn) return false;
+    stopWebRTC();
+
+    try {
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+      });
+      webrtcPc = pc;
+
+      pc.ontrack = (event) => {
+        if (event.streams && event.streams[0] && liveVideo) {
+          liveVideo.srcObject = event.streams[0];
+          liveVideo.style.display = "block";
+          if (liveCanvas) liveCanvas.style.display = "none";
+          if (liveImg) liveImg.hidden = true;
+          if (liveEmpty) liveEmpty.hidden = true;
+          webrtcActive = true;
+          if (liveFpsBadge) {
+            liveFpsBadge.textContent = "🚀 WebRTC H.264 · 60 FPS";
+            liveFpsBadge.style.display = "inline-flex";
+          }
+        }
+      };
+
+      pc.onicecandidate = (e) => {
+        if (e.candidate && ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: "webrtc_candidate",
+            candidate: e.candidate.toJSON()
+          }));
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === "connected") {
+          webrtcActive = true;
+          if (liveFpsBadge) {
+            liveFpsBadge.textContent = "🚀 WebRTC H.264 · 60 FPS";
+            liveFpsBadge.style.display = "inline-flex";
+          }
+        } else if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+          webrtcActive = false;
+          fallbackToWsTurbo();
+        }
+      };
+
+      pc.addTransceiver("video", { direction: "recvonly" });
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: "webrtc_offer",
+          sdp: offer.sdp,
+          type_sdp: offer.type,
+          w: 800,
+          fps: 30
+        }));
+      } else {
+        const res = await fetch("/api/webrtc/offer", {
+          method: "POST",
+          headers: authHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify({ sdp: offer.sdp, type: offer.type, w: 800, fps: 30 })
+        });
+        const ans = await res.json();
+        if (ans && ans.sdp) {
+          await pc.setRemoteDescription(new RTCSessionDescription({ sdp: ans.sdp, type: ans.type }));
+        }
+      }
+      return true;
+    } catch (e) {
+      console.warn("WebRTC başlatılamadı, WS yedeğine geçiliyor:", e);
+      fallbackToWsTurbo();
+      return false;
+    }
+  }
+
+  function stopWebRTC() {
+    webrtcActive = false;
+    if (webrtcPc) {
+      try { webrtcPc.close(); } catch (_) {}
+      webrtcPc = null;
+    }
+    if (liveVideo) {
+      liveVideo.srcObject = null;
+      liveVideo.style.display = "none";
+    }
+  }
+
+  function fallbackToWsTurbo() {
+    stopWebRTC();
+    setLiveMode("ultra");
+    if (liveOn) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        requestNextWsFrame();
+      } else {
+        fetchLiveFrame();
+      }
+    }
+  }
+
+  function handleWebRTCAnswer(data) {
+    if (webrtcPc && data.sdp) {
+      webrtcPc.setRemoteDescription(new RTCSessionDescription({
+        sdp: data.sdp,
+        type: data.type_sdp || data.type || "answer"
+      })).catch((e) => console.warn("RemoteDescription hatası:", e));
+    }
+  }
+
+  function handleWebRTCCandidate(data) {
+    if (webrtcPc && data.candidate) {
+      try {
+        webrtcPc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(() => {});
+      } catch (_) {}
+    }
+  }
 
   function getModeParams() {
     if (liveMode === "ultra") {
@@ -1374,17 +1518,37 @@ async function fetchStatus() {
         livePendingFetch = false;
         liveFrameCount = 0;
         liveFpsLastCheck = performance.now();
-        if (ws && ws.readyState === WebSocket.OPEN) {
+        if (liveMode === "webrtc") {
+          startWebRTC();
+        } else if (ws && ws.readyState === WebSocket.OPEN) {
           requestNextWsFrame();
         } else {
           fetchLiveFrame();
         }
+      } else {
+        stopWebRTC();
+        if (liveVideo) liveVideo.style.display = "none";
+        if (liveCanvas) liveCanvas.style.display = "none";
+        if (liveImg) liveImg.hidden = true;
+        if (liveEmpty) liveEmpty.hidden = false;
       }
     });
   }
   if (btnLiveRefresh) {
     btnLiveRefresh.addEventListener("click", refreshLive);
   }
+  if (liveVideo) {
+    liveVideo.addEventListener("click", () => {
+      try {
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {});
+        } else {
+          liveVideo.requestFullscreen().catch(() => {});
+        }
+      } catch (_) {}
+    });
+  }
+
   if (liveCanvas) {
     liveCanvas.addEventListener("click", () => {
       try {
@@ -1591,6 +1755,15 @@ async function fetchStatus() {
         }
         if (msg.type === "error" && msg.text) {
           appendMsg("error", msg.text);
+        }
+        if (msg.type === "webrtc_answer") {
+          handleWebRTCAnswer(msg);
+        }
+        if (msg.type === "webrtc_candidate") {
+          handleWebRTCCandidate(msg);
+        }
+        if (msg.type === "webrtc_error") {
+          fallbackToWsTurbo();
         }
       } catch (_) {}
     };

@@ -19,3 +19,6 @@ comtypes; platform_system=="Windows"
 pyinstaller>=6.22; platform_system=="Windows"
 aiohttp>=3.9.0
 qrcode[pil]>=7.4
+
+aiortc>=1.10.0
+av>=14.0.0
