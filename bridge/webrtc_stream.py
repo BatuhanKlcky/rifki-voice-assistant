@@ -91,8 +91,10 @@ class WebRTCManager:
         self, sdp: str, sdp_type: str, max_width: int = 800, fps: int = 30
     ) -> tuple[RTCPeerConnection, dict]:
         """İstemciden gelen WebRTC SDP teklifini işler ve donanımsal yanıtı üretir."""
+        from aiortc import RTCConfiguration, RTCIceServer
+        config = RTCConfiguration(iceServers=[RTCIceServer("stun:stun.l.google.com:19302")])
         offer = RTCSessionDescription(sdp=sdp, type=sdp_type)
-        pc = RTCPeerConnection()
+        pc = RTCPeerConnection(configuration=config)
         self._pcs.add(pc)
 
         @pc.on("connectionstatechange")
@@ -110,7 +112,14 @@ class WebRTCManager:
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
 
-        log.info(f"WebRTC yanıtı oluşturuldu ({max_width}px @ {fps}fps)")
+        # Yerel ve STUN ICE adaylarının toplanmasını bekle (One-Shot tam adaylı SDP)
+        for _ in range(50):  # en fazla 500ms
+            if pc.iceGatheringState == "complete":
+                break
+            await asyncio.sleep(0.01)
+
+        candidate_count = len([l for l in pc.localDescription.sdp.splitlines() if "a=candidate" in l])
+        log.info(f"WebRTC yanıtı oluşturuldu ({max_width}px @ {fps}fps, {candidate_count} ICE adayı)")
         return pc, {
             "sdp": pc.localDescription.sdp,
             "type": pc.localDescription.type,

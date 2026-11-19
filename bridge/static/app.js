@@ -1180,7 +1180,7 @@ async function fetchStatus() {
   // =========================================================================
   // 6. CANLI EKRAN MOTORU (WEBRTC H.264 DONANIMSAL & WEBSOCKET TURBO YEDEK)
   // =========================================================================
-  let liveMode = "webrtc"; // "webrtc" (H.264 Donanımsal) | "ultra" (Turbo WS) | "balanced" | "hd"
+  let liveMode = "ultra"; // Varsayılan: Ultra-hızlı garantili Turbo WS; WebRTC istendiğinde geçilebilir
   let liveObjectUrl = null;
   let liveFrameCount = 0;
   let liveFpsLastCheck = performance.now();
@@ -1211,7 +1211,7 @@ async function fetchStatus() {
     if (mode === "hd" && btnModeHd) btnModeHd.classList.add("active");
 
     if (mode === "webrtc") {
-      if (liveOn && !webrtcActive) {
+      if (liveOn) {
         startWebRTC();
       }
     } else {
@@ -1236,6 +1236,11 @@ async function fetchStatus() {
     if (!liveOn) return false;
     stopWebRTC();
 
+    if (liveFpsBadge) {
+      liveFpsBadge.textContent = "🚀 WebRTC Bağlanıyor…";
+      liveFpsBadge.style.display = "inline-flex";
+    }
+
     try {
       const pc = new RTCPeerConnection({
         iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
@@ -1245,11 +1250,14 @@ async function fetchStatus() {
       pc.ontrack = (event) => {
         if (event.streams && event.streams[0] && liveVideo) {
           liveVideo.srcObject = event.streams[0];
+          liveVideo.muted = true;
+          liveVideo.playsInline = true;
           liveVideo.style.display = "block";
           if (liveCanvas) liveCanvas.style.display = "none";
           if (liveImg) liveImg.hidden = true;
           if (liveEmpty) liveEmpty.hidden = true;
           webrtcActive = true;
+          liveVideo.play().catch(() => {});
           if (liveFpsBadge) {
             liveFpsBadge.textContent = "🚀 WebRTC H.264 · 60 FPS";
             liveFpsBadge.style.display = "inline-flex";
@@ -1284,11 +1292,24 @@ async function fetchStatus() {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
+      // İstemci tarafı yerel ICE adaylarını toplasın (One-Shot SDP)
+      await new Promise((resolve) => {
+        if (pc.iceGatheringState === "complete") return resolve();
+        const check = () => {
+          if (pc.iceGatheringState === "complete") {
+            pc.removeEventListener("icegatheringstatechange", check);
+            resolve();
+          }
+        };
+        pc.addEventListener("icegatheringstatechange", check);
+        setTimeout(resolve, 500);
+      });
+
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
           type: "webrtc_offer",
-          sdp: offer.sdp,
-          type_sdp: offer.type,
+          sdp: pc.localDescription.sdp,
+          type_sdp: pc.localDescription.type,
           w: 800,
           fps: 30
         }));
@@ -1296,7 +1317,7 @@ async function fetchStatus() {
         const res = await fetch("/api/webrtc/offer", {
           method: "POST",
           headers: authHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({ sdp: offer.sdp, type: offer.type, w: 800, fps: 30 })
+          body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type, w: 800, fps: 30 })
         });
         const ans = await res.json();
         if (ans && ans.sdp) {
