@@ -70,9 +70,32 @@ class MobilePairingWindow(QDialog):
         root.setContentsMargins(20, 20, 20, 20)
         root.setSpacing(12)
 
+        header_row = QHBoxLayout()
+        header_row.setContentsMargins(0, 0, 0, 0)
         title = QLabel("Mobil bağlantı")
         title.setFont(QFont("Segoe UI", 16, QFont.Bold))
-        root.addWidget(title)
+        header_row.addWidget(title)
+        header_row.addStretch(1)
+
+        self.btn_top_close = QPushButton("✕")
+        self.btn_top_close.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_top_close.setFixedSize(30, 30)
+        self.btn_top_close.setToolTip("Kapat (Esc)")
+        self.btn_top_close.setStyleSheet(
+            """
+            QPushButton {
+              background: transparent; color: #6D8FA3;
+              border: 1px solid #243442; border-radius: 6px;
+              font-size: 14px; font-weight: bold; padding: 0px;
+            }
+            QPushButton:hover {
+              background: #E03131; color: #FFFFFF; border-color: #E03131;
+            }
+            """
+        )
+        self.btn_top_close.clicked.connect(self.close)
+        header_row.addWidget(self.btn_top_close)
+        root.addLayout(header_row)
 
         hint = QLabel(
             "Telefondaki RIFKI uygulamasında «QR tara» deyin ve "
@@ -119,6 +142,25 @@ class MobilePairingWindow(QDialog):
         row.addWidget(self.btn_remote)
         root.addLayout(row)
 
+        self.btn_close = QPushButton("✕ Pencereyi Kapat")
+        self.btn_close.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_close.setMinimumHeight(38)
+        self.btn_close.setToolTip("Kapat (Esc)")
+        self.btn_close.setStyleSheet(
+            """
+            QPushButton {
+              background: #121C24; color: #8EA8B8;
+              border: 1px solid #243442; border-radius: 8px;
+              font-size: 13px; font-weight: 600; padding: 6px 12px;
+            }
+            QPushButton:hover {
+              background: #1A2A34; color: #3DF0FF; border-color: #3DF0FF;
+            }
+            """
+        )
+        self.btn_close.clicked.connect(self.close)
+        root.addWidget(self.btn_close)
+
         self.tunnel_ready.connect(self._on_tunnel_url)
         self._token = ""
         self._current_url = ""
@@ -142,7 +184,12 @@ class MobilePairingWindow(QDialog):
 
     def closeEvent(self, event):
         event.accept()
-        self.closed.emit()
+        super().closeEvent(event)
+        self.hide()
+
+    def reject(self):
+        super().reject()
+        self.hide()
 
     def hideEvent(self, event):
         super().hideEvent(event)

@@ -1,11 +1,11 @@
-# RIFKI — Hibrit Masaüstü & Mobil Yapay Zekâ Asistanı (v2.7.1)
+# RIFKI — Hibrit Masaüstü & Mobil Yapay Zekâ Asistanı (v2.7.2)
 
 <p align="center">
   <img src="assets/arayuz.png" alt="RIFKI Arayüzü" width="720" style="max-width: 100%; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.3);" />
 </p>
 
 <p align="center">
-  <a href="https://github.com/BatuhanKlcky/rifki-voice-assistant/releases/latest"><img src="https://img.shields.io/badge/S%C3%BCr%C3%BCm-v2.7.1-blue.svg?style=flat-square" alt="Sürüm v2.7.1" /></a>
+  <a href="https://github.com/BatuhanKlcky/rifki-voice-assistant/releases/latest"><img src="https://img.shields.io/badge/S%C3%BCr%C3%BCm-v2.7.2-blue.svg?style=flat-square" alt="Sürüm v2.7.2" /></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.10%2B-blueviolet.svg?style=flat-square" alt="Python 3.10+" /></a>
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D6.svg?style=flat-square" alt="Windows Platform" />
   <img src="https://img.shields.io/badge/Yapay%20Zek%C3%A2-Gemini%202.5%20Flash-orange.svg?style=flat-square" alt="Gemini Powered" />
@@ -16,7 +16,7 @@ Türkçe konuşan, sesli ve klavye komutlarını anlayan, Google Gemini tabanlı
 
 ---
 
-## 🚀 Yeni Nesil Özellikler (v2.7.1)
+## 🚀 Yeni Nesil Özellikler (v2.7.2)
 
 ### 🖥️ Donanımsal Canlı Ekran & Ultra-Düşük Gecikme (~10ms)
 - **🚀 WebRTC H.264 Akışı:** NVIDIA NVENC / AMD / Intel donanım hızlandırmalı video kodlaması (60 FPS, ~10ms gecikme, sıfır CPU yükü). Mobil cihazlarda tam otomatik oynatma (autoplay) ve One-Shot ICE candidate gathering entegrasyonu.
@@ -91,7 +91,7 @@ flowchart TD
 | **Masaüstü Arayüzü** | PyQt5 (Şeffaf HUD), Win32 API (`RegisterHotKey`, `user32`, `shell32`, `psutil`) |
 | **Mobil Köprü** | aiohttp, WebSockets, Responsive PWA, Touch Event Engine |
 | **Veritabanı & Güvenlik** | SQLite (İki katmanlı semantik hafıza), Token Auth, IP Brute-Force Koruması |
-| **Paketleme & Dağıtım** | PyInstaller (Early ONNX Hook), Inno Setup 6 (`RIFKI-Setup-2.7.1.exe`) |
+| **Paketleme & Dağıtım** | PyInstaller (Early ONNX Hook), Inno Setup 6 (`RIFKI-Setup-2.7.2.exe`) |
 
 ---
 
@@ -111,7 +111,7 @@ Her kullanıcı kendi bilgisayarındaki RIFKI’ye bağlanır. Adres veya şifre
 ## 💻 Kurulum (Windows)
 
 ### 1. Hazır Kurulum Sihirbazı (Önerilen)
-En son sürüm olan **[RIFKI v2.7.1 Setup](https://github.com/BatuhanKlcky/rifki-voice-assistant/releases/latest)** dosyasını indirin ve çift tıklayarak kurulumu tamamlayın. Kurulum sihirbazı kısayolları ve gerekli bağımlılıkları otomatik olarak yapılandırır.
+En son sürüm olan **[RIFKI v2.7.2 Setup](https://github.com/BatuhanKlcky/rifki-voice-assistant/releases/latest)** dosyasını indirin ve çift tıklayarak kurulumu tamamlayın. Kurulum sihirbazı kısayolları ve gerekli bağımlılıkları otomatik olarak yapılandırır.
 
 ### 2. Geliştirici Kurulumu (Kaynak Koddan Çalıştırma)
 1. Python 3.10+ kurulu olduğundan emin olun.
